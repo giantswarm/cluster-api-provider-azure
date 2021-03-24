@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -54,6 +55,7 @@ type AzureJSONMachinePoolReconciler struct {
 // SetupWithManager initializes this controller with a manager
 func (r *AzureJSONMachinePoolReconciler) SetupWithManager(mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		WithEventFilter(predicates.ResourceHasFilterLabel(r.Log, r.WatchFilterValue)).
 		For(&expv1.AzureMachinePool{}).
 		Owns(&corev1.Secret{}).
 		Complete(r)
