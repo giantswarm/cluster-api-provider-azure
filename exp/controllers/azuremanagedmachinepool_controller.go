@@ -54,17 +54,19 @@ type AzureManagedMachinePoolReconciler struct {
 	Recorder                             record.EventRecorder
 	ReconcileTimeout                     time.Duration
 	createAzureManagedMachinePoolService azureManagedMachinePoolServiceCreator
+	WatchFilterValue                     string
 }
 
 type azureManagedMachinePoolServiceCreator func(managedControlPlaneScope *scope.ManagedControlPlaneScope) *azureManagedMachinePoolService
 
 // NewAzureManagedMachinePoolReconciler returns a new AzureManagedMachinePoolReconciler instance
-func NewAzureManagedMachinePoolReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration) *AzureManagedMachinePoolReconciler {
+func NewAzureManagedMachinePoolReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration, watchFilterValue string) *AzureManagedMachinePoolReconciler {
 	ampr := &AzureManagedMachinePoolReconciler{
 		Client:           client,
 		Log:              log,
 		Recorder:         recorder,
 		ReconcileTimeout: reconcileTimeout,
+		WatchFilterValue: watchFilterValue,
 	}
 
 	ampr.createAzureManagedMachinePoolService = newAzureManagedMachinePoolService
@@ -85,7 +87,7 @@ func (r *AzureManagedMachinePoolReconciler) SetupWithManager(mgr ctrl.Manager, o
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(azManagedMachinePool).
-		WithEventFilter(predicates.ResourceNotPaused(log)). // don't queue reconcile if resource is paused
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log, r.WatchFilterValue)). // don't queue reconcile if resource is paused
 		// watch for changes in CAPI MachinePool resources
 		Watches(
 			&source.Kind{Type: &clusterv1exp.MachinePool{}},
@@ -111,7 +113,7 @@ func (r *AzureManagedMachinePoolReconciler) SetupWithManager(mgr ctrl.Manager, o
 		&handler.EnqueueRequestsFromMapFunc{
 			ToRequests: util.ClusterToInfrastructureMapFunc(infrav1exp.GroupVersion.WithKind("AzureManagedMachinePool")),
 		},
-		predicates.ClusterUnpausedAndInfrastructureReady(log),
+		predicates.All(r.Log, predicates.ResourceNotPausedAndHasFilterLabel(r.Log, r.WatchFilterValue), predicates.ClusterUnpausedAndInfrastructureReady(r.Log)),
 	); err != nil {
 		return errors.Wrapf(err, "failed adding a watch for ready clusters")
 	}

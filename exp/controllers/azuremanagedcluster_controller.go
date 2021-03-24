@@ -50,6 +50,7 @@ type AzureManagedClusterReconciler struct {
 	Log              logr.Logger
 	Recorder         record.EventRecorder
 	ReconcileTimeout time.Duration
+	WatchFilterValue string
 }
 
 // SetupWithManager initializes this controller with a manager.
@@ -59,7 +60,7 @@ func (r *AzureManagedClusterReconciler) SetupWithManager(mgr ctrl.Manager, optio
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(azManagedCluster).
-		WithEventFilter(predicates.ResourceNotPaused(log)). // don't queue reconcile if resource is paused
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log, r.WatchFilterValue)). // don't queue reconcile if resource is paused
 		Build(r)
 	if err != nil {
 		return errors.Wrapf(err, "error creating controller")
@@ -71,7 +72,7 @@ func (r *AzureManagedClusterReconciler) SetupWithManager(mgr ctrl.Manager, optio
 		&handler.EnqueueRequestsFromMapFunc{
 			ToRequests: util.ClusterToInfrastructureMapFunc(infrav1exp.GroupVersion.WithKind("AzureManagedCluster")),
 		},
-		predicates.ClusterUnpaused(log),
+		predicates.ResourceNotPausedAndHasFilterLabel(r.Log, r.WatchFilterValue),
 	); err != nil {
 		return errors.Wrapf(err, "failed adding a watch for ready clusters")
 	}

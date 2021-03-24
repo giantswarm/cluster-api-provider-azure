@@ -95,6 +95,7 @@ var (
 	enableLeaderElection        bool
 	leaderElectionNamespace     string
 	watchNamespace              string
+	watchFilterValue            string
 	profilerAddress             string
 	azureClusterConcurrency     int
 	azureMachineConcurrency     int
@@ -135,6 +136,12 @@ func InitFlags(fs *pflag.FlagSet) {
 		"",
 		"Namespace that the controller watches to reconcile cluster-api objects. If unspecified, the controller watches for cluster-api objects across all namespaces.",
 	)
+
+	fs.StringVar(
+		&watchFilterValue,
+		"watch-filter",
+		"",
+		fmt.Sprintf("Label value that the controller watches to reconcile cluster-api objects. Label key is always %s. If unspecified, the controller watches for all cluster-api objects.", clusterv1.WatchLabel))
 
 	fs.StringVar(
 		&profilerAddress,
@@ -259,14 +266,14 @@ func main() {
 	if webhookPort == 0 {
 		if err = controllers.NewAzureMachineReconciler(mgr.GetClient(),
 			ctrl.Log.WithName("controllers").WithName("AzureMachine"),
-			mgr.GetEventRecorderFor("azuremachine-reconciler"), reconcileTimeout).
+			mgr.GetEventRecorderFor("azuremachine-reconciler"), reconcileTimeout, watchFilterValue).
 			SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureMachineConcurrency}); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AzureMachine")
 			os.Exit(1)
 		}
 		if err = controllers.NewAzureClusterReconciler(mgr.GetClient(),
 			ctrl.Log.WithName("controllers").WithName("AzureCluster"),
-			mgr.GetEventRecorderFor("azurecluster-reconciler"), reconcileTimeout).
+			mgr.GetEventRecorderFor("azurecluster-reconciler"), reconcileTimeout, watchFilterValue).
 			SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureClusterConcurrency}); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AzureCluster")
 			os.Exit(1)
@@ -276,6 +283,7 @@ func main() {
 			Log:              ctrl.Log.WithName("controllers").WithName("AzureJSONTemplate"),
 			Recorder:         mgr.GetEventRecorderFor("azurejsontemplate-reconciler"),
 			ReconcileTimeout: reconcileTimeout,
+			WatchFilterValue: watchFilterValue,
 		}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureMachineConcurrency}); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AzureJSONTemplate")
 			os.Exit(1)
@@ -285,6 +293,7 @@ func main() {
 			Log:              ctrl.Log.WithName("controllers").WithName("AzureJSONMachine"),
 			Recorder:         mgr.GetEventRecorderFor("azurejsonmachine-reconciler"),
 			ReconcileTimeout: reconcileTimeout,
+			WatchFilterValue: watchFilterValue,
 		}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureMachineConcurrency}); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AzureJSONMachine")
 			os.Exit(1)
@@ -294,6 +303,7 @@ func main() {
 			Log:              ctrl.Log.WithName("controllers").WithName("AzureIdentity"),
 			Recorder:         mgr.GetEventRecorderFor("azureidentity-reconciler"),
 			ReconcileTimeout: reconcileTimeout,
+			WatchFilterValue: watchFilterValue,
 		}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureClusterConcurrency}); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AzureIdentity")
 			os.Exit(1)
@@ -303,7 +313,7 @@ func main() {
 		if feature.Gates.Enabled(capifeature.MachinePool) {
 			if err = infrav1controllersexp.NewAzureMachinePoolReconciler(mgr.GetClient(),
 				ctrl.Log.WithName("controllers").WithName("AzureMachinePool"),
-				mgr.GetEventRecorderFor("azuremachinepool-reconciler"), reconcileTimeout).
+				mgr.GetEventRecorderFor("azuremachinepool-reconciler"), reconcileTimeout, watchFilterValue).
 				SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureMachinePoolConcurrency}); err != nil {
 				setupLog.Error(err, "unable to create controller", "controller", "AzureMachinePool")
 				os.Exit(1)
@@ -313,6 +323,7 @@ func main() {
 				Log:              ctrl.Log.WithName("controllers").WithName("AzureJSONMachinePool"),
 				Recorder:         mgr.GetEventRecorderFor("azurejsonmachinepool-reconciler"),
 				ReconcileTimeout: reconcileTimeout,
+				WatchFilterValue: watchFilterValue,
 			}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureMachinePoolConcurrency}); err != nil {
 				setupLog.Error(err, "unable to create controller", "controller", "AzureJSONMachinePool")
 				os.Exit(1)
@@ -320,7 +331,7 @@ func main() {
 			if feature.Gates.Enabled(feature.AKS) {
 				if err = infrav1controllersexp.NewAzureManagedMachinePoolReconciler(mgr.GetClient(),
 					ctrl.Log.WithName("controllers").WithName("AzureManagedMachinePool"),
-					mgr.GetEventRecorderFor("azuremachine-reconciler"), reconcileTimeout).
+					mgr.GetEventRecorderFor("azuremachine-reconciler"), reconcileTimeout, watchFilterValue).
 					SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureMachineConcurrency}); err != nil {
 					setupLog.Error(err, "unable to create controller", "controller", "AzureManagedMachinePool")
 					os.Exit(1)
@@ -330,6 +341,7 @@ func main() {
 					Log:              ctrl.Log.WithName("controllers").WithName("AzureManagedCluster"),
 					Recorder:         mgr.GetEventRecorderFor("azuremanagedcluster-reconciler"),
 					ReconcileTimeout: reconcileTimeout,
+					WatchFilterValue: watchFilterValue,
 				}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureClusterConcurrency}); err != nil {
 					setupLog.Error(err, "unable to create controller", "controller", "AzureManagedCluster")
 					os.Exit(1)
@@ -339,6 +351,7 @@ func main() {
 					Log:              ctrl.Log.WithName("controllers").WithName("AzureManagedControlPlane"),
 					Recorder:         mgr.GetEventRecorderFor("azuremanagedcontrolplane-reconciler"),
 					ReconcileTimeout: reconcileTimeout,
+					WatchFilterValue: watchFilterValue,
 				}).SetupWithManager(mgr, controller.Options{MaxConcurrentReconciles: azureClusterConcurrency}); err != nil {
 					setupLog.Error(err, "unable to create controller", "controller", "AzureManagedControlPlane")
 					os.Exit(1)

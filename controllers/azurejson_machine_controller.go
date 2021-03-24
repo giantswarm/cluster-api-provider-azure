@@ -51,6 +51,7 @@ type AzureJSONMachineReconciler struct {
 	Log              logr.Logger
 	Recorder         record.EventRecorder
 	ReconcileTimeout time.Duration
+	WatchFilterValue string
 }
 
 // SetupWithManager initializes this controller with a manager

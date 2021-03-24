@@ -55,17 +55,19 @@ type AzureClusterReconciler struct {
 	Recorder                  record.EventRecorder
 	ReconcileTimeout          time.Duration
 	createAzureClusterService azureClusterServiceCreator
+	WatchFilterValue          string
 }
 
 type azureClusterServiceCreator func(clusterScope *scope.ClusterScope) (*azureClusterService, error)
 
 // NewAzureClusterReconciler returns a new AzureClusterReconciler instance
-func NewAzureClusterReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration) *AzureClusterReconciler {
+func NewAzureClusterReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration, watchFilterValue string) *AzureClusterReconciler {
 	acr := &AzureClusterReconciler{
 		Client:           client,
 		Log:              log,
 		Recorder:         recorder,
 		ReconcileTimeout: reconcileTimeout,
+		WatchFilterValue: watchFilterValue,
 	}
 
 	acr.createAzureClusterService = newAzureClusterService
@@ -79,7 +81,7 @@ func (r *AzureClusterReconciler) SetupWithManager(mgr ctrl.Manager, options cont
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&infrav1.AzureCluster{}).
-		WithEventFilter(predicates.ResourceNotPaused(log)). // don't queue reconcile if resource is paused
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log, r.WatchFilterValue)). // don't queue reconcile if resource is paused
 		Build(r)
 	if err != nil {
 		return errors.Wrapf(err, "error creating controller")
@@ -91,7 +93,7 @@ func (r *AzureClusterReconciler) SetupWithManager(mgr ctrl.Manager, options cont
 		&handler.EnqueueRequestsFromMapFunc{
 			ToRequests: util.ClusterToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("AzureCluster")),
 		},
-		predicates.ClusterUnpaused(log),
+		predicates.ResourceNotPausedAndHasFilterLabel(r.Log, r.WatchFilterValue),
 	); err != nil {
 		return errors.Wrapf(err, "failed adding a watch for ready clusters")
 	}
