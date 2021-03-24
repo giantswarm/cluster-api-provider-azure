@@ -32,6 +32,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -59,6 +60,7 @@ func (r *AzureJSONMachineReconciler) SetupWithManager(mgr ctrl.Manager, options 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.AzureMachine{}).
 		WithEventFilter(filterUnclonedMachinesPredicate{log: r.Log}).
+		WithEventFilter(predicates.ResourceHasFilterLabel(r.Log, r.WatchFilterValue)).
 		Owns(&corev1.Secret{}).
 		Complete(r)
 }
