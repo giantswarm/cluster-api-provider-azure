@@ -52,6 +52,7 @@ type AzureManagedControlPlaneReconciler struct {
 	Log              logr.Logger
 	Recorder         record.EventRecorder
 	ReconcileTimeout time.Duration
+	WatchFilterValue string
 }
 
 // SetupWithManager initializes this controller with a manager.
@@ -67,7 +68,7 @@ func (r *AzureManagedControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager, 
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(azManagedControlPlane).
-		WithEventFilter(predicates.ResourceNotPaused(log)). // don't queue reconcile if resource is paused
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log, r.WatchFilterValue)). // don't queue reconcile if resource is paused
 		// watch AzureManagedCluster resources
 		Watches(
 			&source.Kind{Type: &infrav1exp.AzureManagedCluster{}},
@@ -86,7 +87,7 @@ func (r *AzureManagedControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager, 
 		&handler.EnqueueRequestsFromMapFunc{
 			ToRequests: util.ClusterToInfrastructureMapFunc(infrav1exp.GroupVersion.WithKind("AzureManagedControlPlane")),
 		},
-		predicates.ClusterUnpausedAndInfrastructureReady(log),
+		predicates.All(r.Log, predicates.ResourceNotPausedAndHasFilterLabel(r.Log, r.WatchFilterValue), predicates.ClusterUnpausedAndInfrastructureReady(r.Log)),
 	); err != nil {
 		return errors.Wrapf(err, "failed adding a watch for ready clusters")
 	}

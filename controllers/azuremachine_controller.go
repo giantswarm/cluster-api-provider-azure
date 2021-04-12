@@ -55,17 +55,19 @@ type AzureMachineReconciler struct {
 	Recorder                  record.EventRecorder
 	ReconcileTimeout          time.Duration
 	createAzureMachineService azureMachineServiceCreator
+	WatchFilterValue          string
 }
 
 type azureMachineServiceCreator func(machineScope *scope.MachineScope) (*azureMachineService, error)
 
 // NewAzureMachineReconciler returns a new AzureMachineReconciler instance
-func NewAzureMachineReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration) *AzureMachineReconciler {
+func NewAzureMachineReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration, watchFilterValue string) *AzureMachineReconciler {
 	amr := &AzureMachineReconciler{
 		Client:           client,
 		Log:              log,
 		Recorder:         recorder,
 		ReconcileTimeout: reconcileTimeout,
+		WatchFilterValue: watchFilterValue,
 	}
 
 	amr.createAzureMachineService = newAzureMachineService
@@ -85,7 +87,7 @@ func (r *AzureMachineReconciler) SetupWithManager(mgr ctrl.Manager, options cont
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&infrav1.AzureMachine{}).
-		WithEventFilter(predicates.ResourceNotPaused(log)). // don't queue reconcile if resource is paused
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(log, r.WatchFilterValue)). // don't queue reconcile if resource is paused
 		// watch for changes in CAPI Machine resources
 		Watches(
 			&source.Kind{Type: &clusterv1.Machine{}},
@@ -116,7 +118,7 @@ func (r *AzureMachineReconciler) SetupWithManager(mgr ctrl.Manager, options cont
 		&handler.EnqueueRequestsFromMapFunc{
 			ToRequests: azureMachineMapper,
 		},
-		predicates.ClusterUnpausedAndInfrastructureReady(log),
+		predicates.All(r.Log, predicates.ResourceNotPausedAndHasFilterLabel(r.Log, r.WatchFilterValue), predicates.ClusterUnpausedAndInfrastructureReady(r.Log)),
 	); err != nil {
 		return errors.Wrapf(err, "failed adding a watch for ready clusters")
 	}

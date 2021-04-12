@@ -43,3 +43,4 @@ require (
 )
 
 replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v14.2.0+incompatible
+replace sigs.k8s.io/cluster-api => github.com/giantswarm/cluster-api v0.3.10-0.20210315183214-1f96eea1165d
