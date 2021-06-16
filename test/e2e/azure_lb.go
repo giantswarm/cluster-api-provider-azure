@@ -22,6 +22,9 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
+
+	"sigs.k8s.io/cluster-api/util"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -47,7 +50,6 @@ type AzureLBSpecInput struct {
 	SkipCleanup           bool
 	IPv6                  bool
 	Windows               bool
-	IsVMSS                bool
 }
 
 // AzureLBSpec implements a test that verifies Azure internal and external load balancers can
@@ -70,24 +72,28 @@ func AzureLBSpec(ctx context.Context, inputGetter func() AzureLBSpecInput) {
 	Expect(clientset).NotTo(BeNil())
 
 	By("creating an HTTP deployment")
-	deploymentName := "web"
+	deploymentName := "web" + util.RandomString(6)
 	// if case of input.SkipCleanup we need a unique name for windows
 	if input.Windows {
-		deploymentName = "web-windows"
+		deploymentName = "web-windows" + util.RandomString(6)
 	}
 
 	webDeployment := deploymentBuilder.CreateDeployment("httpd", deploymentName, corev1.NamespaceDefault)
 	webDeployment.AddContainerPort("http", "http", 80, corev1.ProtocolTCP)
 
 	if input.Windows {
-		windowsVersion, err := node.GetWindowsVersion(clientset)
-		Expect(err).NotTo(HaveOccurred())
+		var windowsVersion windows.OSVersion
+		Eventually(func() error {
+			version, err := node.GetWindowsVersion(ctx, clientset)
+			windowsVersion = version
+			return err
+		}, 300*time.Second, 5*time.Second).Should(Succeed())
 		iisImage := windows.GetWindowsImage(windows.Httpd, windowsVersion)
 		webDeployment.SetImage(deploymentName, iisImage)
 		webDeployment.AddWindowsSelectors()
 	}
 
-	deployment, err := webDeployment.Deploy(clientset)
+	deployment, err := webDeployment.Deploy(ctx, clientset)
 	Expect(err).NotTo(HaveOccurred())
 	deployInput := WaitForDeploymentsAvailableInput{
 		Getter:     deploymentsClientAdapter{client: webDeployment.Client(clientset)},
@@ -114,13 +120,12 @@ func AzureLBSpec(ctx context.Context, inputGetter func() AzureLBSpecInput) {
 
 	// TODO: fix and enable this. Internal LBs + IPv6 is currently in preview.
 	// https://docs.microsoft.com/en-us/azure/virtual-network/ipv6-dual-stack-standard-internal-load-balancer-powershell
-	//
-	// TODO: fix and enable this for VMSS after NRP / CRP sync bug is resolved
-	if !input.IPv6 && !input.IsVMSS {
+	if !input.IPv6 {
 		By("creating an internal Load Balancer service")
 
 		ilbService := webDeployment.GetService(ports, deploymentBuilder.InternalLoadbalancer)
-		_, err = servicesClient.Create(ilbService)
+		Log("starting to create an internal Load Balancer service")
+		_, err = servicesClient.Create(ctx, ilbService, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		ilbSvcInput := WaitForServiceAvailableInput{
 			Getter:    servicesClientAdapter{client: servicesClient},
@@ -131,32 +136,36 @@ func AzureLBSpec(ctx context.Context, inputGetter func() AzureLBSpecInput) {
 
 		By("connecting to the internal LB service from a curl pod")
 
-		svc, err := servicesClient.Get(ilbService.Name, metav1.GetOptions{})
+		svc, err := servicesClient.Get(ctx, ilbService.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		ilbIP := extractServiceIp(svc)
 
 		ilbJob := job.CreateCurlJob("curl-to-ilb-job", ilbIP)
-		_, err = jobsClient.Create(ilbJob)
+		Log("starting to create a curl to ilb job")
+		_, err = jobsClient.Create(ctx, ilbJob, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		ilbJobInput := WaitForJobCompleteInput{
 			Getter:    jobsClientAdapter{client: jobsClient},
 			Job:       ilbJob,
 			Clientset: clientset,
 		}
-		WaitForJobComplete(context.TODO(), ilbJobInput, e2eConfig.GetIntervals(specName, "wait-job")...)
+		WaitForJobComplete(ctx, ilbJobInput, e2eConfig.GetIntervals(specName, "wait-job")...)
 
 		if !input.SkipCleanup {
 			By("deleting the ilb test resources")
-			err = servicesClient.Delete(ilbService.Name, &metav1.DeleteOptions{})
+			Logf("deleting the ilb service: %s", ilbService.Name)
+			err = servicesClient.Delete(ctx, ilbService.Name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			err = jobsClient.Delete(ilbJob.Name, &metav1.DeleteOptions{})
+			Logf("deleting the ilb job: %s", ilbJob.Name)
+			err = jobsClient.Delete(ctx, ilbJob.Name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 		}
 	}
 
 	By("creating an external Load Balancer service")
 	elbService := webDeployment.GetService(ports, deploymentBuilder.ExternalLoadbalancer)
-	_, err = servicesClient.Create(elbService)
+	Log("starting to create an external Load Balancer service")
+	_, err = servicesClient.Create(ctx, elbService, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	elbSvcInput := WaitForServiceAvailableInput{
 		Getter:    servicesClientAdapter{client: servicesClient},
@@ -166,12 +175,13 @@ func AzureLBSpec(ctx context.Context, inputGetter func() AzureLBSpecInput) {
 	WaitForServiceAvailable(ctx, elbSvcInput, e2eConfig.GetIntervals(specName, "wait-service")...)
 
 	By("connecting to the external LB service from a curl pod")
-	svc, err := servicesClient.Get(elbService.Name, metav1.GetOptions{})
+	svc, err := servicesClient.Get(ctx, elbService.Name, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	elbIP := extractServiceIp(svc)
-	elbJob := job.CreateCurlJob("curl-to-elb-job", elbIP)
-	_, err = jobsClient.Create(elbJob)
+	Log("starting to create curl-to-elb job")
+	elbJob := job.CreateCurlJob("curl-to-elb-job"+util.RandomString(6), elbIP)
+	_, err = jobsClient.Create(ctx, elbJob, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	elbJobInput := WaitForJobCompleteInput{
 		Getter:    jobsClientAdapter{client: jobsClient},
@@ -180,30 +190,31 @@ func AzureLBSpec(ctx context.Context, inputGetter func() AzureLBSpecInput) {
 	}
 	WaitForJobComplete(ctx, elbJobInput, e2eConfig.GetIntervals(specName, "wait-job")...)
 
-	// TODO: determine root issue of failures of addressing the ELB from prow and fix
-	// see https://kubernetes.slack.com/archives/CEX9HENG7/p1610547551019900
-
 	if !input.IPv6 {
 		By("connecting directly to the external LB service")
 		url := fmt.Sprintf("http://%s", elbIP)
+		Log("starting attempts to connect directly to the external LB service")
 		resp, err := retryablehttp.Get(url)
 		if resp != nil {
 			defer resp.Body.Close()
 		}
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(200))
-		Expect(err).NotTo(HaveOccurred())
+		Log("successfully connected to the external LB service")
 	}
 
 	if input.SkipCleanup {
 		return
 	}
 	By("deleting the test resources")
-	err = servicesClient.Delete(elbService.Name, &metav1.DeleteOptions{})
+	Logf("starting to delete external LB service %s", elbService.Name)
+	err = servicesClient.Delete(ctx, elbService.Name, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred())
-	err = webDeployment.Client(clientset).Delete(deployment.Name, &metav1.DeleteOptions{})
+	Logf("starting to delete deployment %s", deployment.Name)
+	err = webDeployment.Client(clientset).Delete(ctx, deployment.Name, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred())
-	err = jobsClient.Delete(elbJob.Name, &metav1.DeleteOptions{})
+	Logf("starting to delete job %s", elbJob.Name)
+	err = jobsClient.Delete(ctx, elbJob.Name, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred())
 }
 

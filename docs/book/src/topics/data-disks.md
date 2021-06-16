@@ -7,7 +7,12 @@ This document describes how to specify data disks to be provisioned and attached
 Azure Machines support optionally specifying a list of data disks to be attached to the virtual machine. Each data disk must have:
  - `nameSuffix` - the name suffix of the disk to be created. Each disk will be named `<machineName>_<nameSuffix>` to ensure uniqueness. 
  - `diskSizeGB` - the disk size in GB.
+ - `managedDisk` - (optional) the managed disk for a VM (see below)
  - `lun` - the logical unit number (see below)
+
+### Managed Disk Options
+
+See [Introduction to Azure managed disks](https://docs.microsoft.com/en-us/azure/virtual-machines/managed-disks-overview) for more information.
  
 ### Disk LUN
  
@@ -35,7 +40,7 @@ NOTE: the same can be applied to worker machines.
 
 ````yaml
 kind: KubeadmControlPlane
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
 metadata:
   name: "${CLUSTER_NAME}-control-plane"
 spec:
@@ -71,7 +76,7 @@ spec:
         - /var/lib/mydir
 ---
 kind: AzureMachineTemplate
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
 metadata:
   name: "${CLUSTER_NAME}-control-plane"
 spec:
@@ -81,6 +86,8 @@ spec:
       dataDisks:
         - nameSuffix: etcddisk
           diskSizeGB: 256
+          managedDisk:
+            storageAccountType: Standard_LRS
           lun: 0
         - nameSuffix: mydisk
           diskSizeGB: 128

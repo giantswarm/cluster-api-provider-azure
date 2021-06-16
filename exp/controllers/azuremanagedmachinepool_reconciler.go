@@ -23,24 +23,24 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2020-06-30/compute"
 	"github.com/pkg/errors"
-	azure "sigs.k8s.io/cluster-api-provider-azure/cloud"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/scope"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/agentpools"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/scalesets"
+	"sigs.k8s.io/cluster-api-provider-azure/azure"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/scope"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/agentpools"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/scalesets"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type (
-	// azureManagedMachinePoolService are list of services required by cluster controller
+	// azureManagedMachinePoolService contains the services required by the cluster controller.
 	azureManagedMachinePoolService struct {
 		kubeclient    client.Client
 		agentPoolsSvc azure.OldService
 		scaleSetsSvc  NodeLister
 	}
 
-	// AgentPoolVMSSNotFoundError represents a reconcile error when the VMSS for an agent pool can't be found
+	// AgentPoolVMSSNotFoundError represents a reconcile error when the VMSS for an agent pool can't be found.
 	AgentPoolVMSSNotFoundError struct {
 		NodeResourceGroup string
 		PoolName          string
@@ -57,7 +57,7 @@ var (
 	notFoundErr = new(AgentPoolVMSSNotFoundError)
 )
 
-// NewAgentPoolVMSSNotFoundError creates a new AgentPoolVMSSNotFoundError
+// NewAgentPoolVMSSNotFoundError creates a new AgentPoolVMSSNotFoundError.
 func NewAgentPoolVMSSNotFoundError(nodeResourceGroup, poolName string) *AgentPoolVMSSNotFoundError {
 	return &AgentPoolVMSSNotFoundError{
 		NodeResourceGroup: nodeResourceGroup,
@@ -77,7 +77,7 @@ func (a *AgentPoolVMSSNotFoundError) Is(target error) bool {
 	return ok
 }
 
-// newAzureManagedMachinePoolService populates all the services based on input scope
+// newAzureManagedMachinePoolService populates all the services based on input scope.
 func newAzureManagedMachinePoolService(scope *scope.ManagedControlPlaneScope) *azureManagedMachinePoolService {
 	return &azureManagedMachinePoolService{
 		kubeclient:    scope.Client,
@@ -86,7 +86,7 @@ func newAzureManagedMachinePoolService(scope *scope.ManagedControlPlaneScope) *a
 	}
 }
 
-// Reconcile reconciles all the services in pre determined order
+// Reconcile reconciles all the services in a predetermined order.
 func (s *azureManagedMachinePoolService) Reconcile(ctx context.Context, scope *scope.ManagedControlPlaneScope) error {
 	ctx, span := tele.Tracer().Start(ctx, "controllers.azureManagedMachinePoolService.Reconcile")
 	defer span.End()
@@ -152,7 +152,7 @@ func (s *azureManagedMachinePoolService) Reconcile(ctx context.Context, scope *s
 
 	var providerIDs = make([]string, len(instances))
 	for i := 0; i < len(instances); i++ {
-		providerIDs[i] = fmt.Sprintf("azure://%s", *instances[i].ID)
+		providerIDs[i] = azure.ProviderIDPrefix + *instances[i].ID
 	}
 
 	scope.InfraMachinePool.Spec.ProviderIDList = providerIDs
@@ -163,7 +163,7 @@ func (s *azureManagedMachinePoolService) Reconcile(ctx context.Context, scope *s
 	return nil
 }
 
-// Delete reconciles all the services in pre determined order
+// Delete reconciles all the services in a predetermined order.
 func (s *azureManagedMachinePoolService) Delete(ctx context.Context, scope *scope.ManagedControlPlaneScope) error {
 	ctx, span := tele.Tracer().Start(ctx, "controllers.azureManagedMachinePoolService.Delete")
 	defer span.End()
@@ -181,7 +181,7 @@ func (s *azureManagedMachinePoolService) Delete(ctx context.Context, scope *scop
 	return nil
 }
 
-// IsAgentPoolVMSSNotFoundError returns true if the error is a AgentPoolVMSSNotFoundError
+// IsAgentPoolVMSSNotFoundError returns true if the error is an AgentPoolVMSSNotFoundError.
 func IsAgentPoolVMSSNotFoundError(err error) bool {
 	return errors.Is(err, notFoundErr)
 }

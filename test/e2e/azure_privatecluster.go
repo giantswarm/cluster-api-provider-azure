@@ -21,16 +21,20 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"github.com/Azure/azure-sdk-for-go/profiles/latest/network/mgmt/network"
-	"github.com/Azure/azure-sdk-for-go/profiles/latest/resources/mgmt/resources"
+	"os"
+	"path/filepath"
+
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2019-05-01/resources"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/pointer"
-	"os"
-	"path/filepath"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	"sigs.k8s.io/cluster-api-provider-azure/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	capi_e2e "sigs.k8s.io/cluster-api/test/e2e"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -65,10 +69,11 @@ func AzurePrivateClusterSpec(ctx context.Context, inputGetter func() AzurePrivat
 	Expect(input.BootstrapClusterProxy).NotTo(BeNil(), "Invalid argument. input.BootstrapClusterProxy can't be nil when calling %s spec", specName)
 	Expect(input.Namespace).NotTo(BeNil(), "Invalid argument. input.Namespace can't be nil when calling %s spec", specName)
 	By("creating a Kubernetes client to the workload cluster")
-	publicClusterProxy = input.BootstrapClusterProxy.GetWorkloadCluster(context.TODO(), input.Namespace.Name, input.ClusterName)
+	publicClusterProxy = input.BootstrapClusterProxy.GetWorkloadCluster(ctx, input.Namespace.Name, input.ClusterName)
 
 	Byf("Creating a namespace for hosting the %s test spec", specName)
-	publicNamespace, publicCancelWatches = framework.CreateNamespaceAndWatchEvents(context.TODO(), framework.CreateNamespaceAndWatchEventsInput{
+	Logf("starting to create namespace for hosting the %s test spec", specName)
+	publicNamespace, publicCancelWatches = framework.CreateNamespaceAndWatchEvents(ctx, framework.CreateNamespaceAndWatchEventsInput{
 		Creator:   publicClusterProxy.GetClient(),
 		ClientSet: publicClusterProxy.GetClientSet(),
 		Name:      input.Namespace.Name,
@@ -79,7 +84,7 @@ func AzurePrivateClusterSpec(ctx context.Context, inputGetter func() AzurePrivat
 	Expect(publicCancelWatches).NotTo(BeNil())
 
 	By("Initializing the workload cluster")
-	clusterctl.InitManagementClusterAndWatchControllerLogs(context.TODO(), clusterctl.InitManagementClusterAndWatchControllerLogsInput{
+	clusterctl.InitManagementClusterAndWatchControllerLogs(ctx, clusterctl.InitManagementClusterAndWatchControllerLogsInput{
 		ClusterProxy:            publicClusterProxy,
 		ClusterctlConfigPath:    input.ClusterctlConfigPath,
 		InfrastructureProviders: input.E2EConfig.InfrastructureProviders(),
@@ -95,7 +100,8 @@ func AzurePrivateClusterSpec(ctx context.Context, inputGetter func() AzurePrivat
 	By("Creating a private workload cluster")
 	clusterName = fmt.Sprintf("capz-e2e-%s", util.RandomString(6))
 	Expect(os.Setenv(AzureInternalLBIP, "10.128.0.100")).NotTo(HaveOccurred())
-	result := clusterctl.ApplyClusterTemplateAndWait(ctx, clusterctl.ApplyClusterTemplateAndWaitInput{
+	result := &clusterctl.ApplyClusterTemplateAndWaitResult{}
+	clusterctl.ApplyClusterTemplateAndWait(ctx, clusterctl.ApplyClusterTemplateAndWaitInput{
 		ClusterProxy: publicClusterProxy,
 		ConfigCluster: clusterctl.ConfigClusterInput{
 			LogFolder:                filepath.Join(input.ArtifactFolder, "clusters", publicClusterProxy.GetName()),
@@ -112,10 +118,49 @@ func AzurePrivateClusterSpec(ctx context.Context, inputGetter func() AzurePrivat
 		WaitForClusterIntervals:      input.E2EConfig.GetIntervals(specName, "wait-cluster"),
 		WaitForControlPlaneIntervals: input.E2EConfig.GetIntervals(specName, "wait-control-plane"),
 		WaitForMachineDeployments:    input.E2EConfig.GetIntervals(specName, "wait-worker-nodes"),
-	})
+	}, result)
 	cluster = result.Cluster
 
 	Expect(cluster).ToNot(BeNil())
+
+	// Check that azure bastion is provisioned successfully.
+	{
+		settings, err := auth.GetSettingsFromEnvironment()
+		Expect(err).To(BeNil())
+
+		azureBastionClient := network.NewBastionHostsClient(settings.GetSubscriptionID())
+		azureBastionClient.Authorizer, err = settings.GetAuthorizer()
+		Expect(err).To(BeNil())
+
+		groupName := os.Getenv(AzureResourceGroup)
+		azureBastionName := fmt.Sprintf("%s-azure-bastion", clusterName)
+
+		backoff := wait.Backoff{
+			Duration: retryBackoffInitialDuration,
+			Factor:   retryBackoffFactor,
+			Jitter:   retryBackoffJitter,
+			Steps:    retryBackoffSteps,
+		}
+		retryFn := func() (bool, error) {
+			bastion, err := azureBastionClient.Get(ctx, groupName, azureBastionName)
+			if err != nil {
+				return false, err
+			}
+
+			switch bastion.ProvisioningState {
+			case network.Succeeded:
+				return true, nil
+			case network.Updating:
+				// Wait for operation to complete.
+				return false, nil
+			default:
+				return false, errors.New(fmt.Sprintf("Azure Bastion provisioning failed with state: %q", bastion.ProvisioningState))
+			}
+		}
+		err = wait.ExponentialBackoff(backoff, retryFn)
+
+		Expect(err).To(BeNil())
+	}
 }
 
 // SetupExistingVNet creates a resource group and a VNet to be used by a workload cluster.
@@ -207,6 +252,14 @@ func SetupExistingVNet(ctx context.Context, vnetCidr string, cpSubnetCidrs, node
 			Name: pointer.StringPtr(name),
 		})
 	}
+
+	// Create the AzureBastion subnet.
+	subnets = append(subnets, network.Subnet{
+		SubnetPropertiesFormat: &network.SubnetPropertiesFormat{
+			AddressPrefix: pointer.StringPtr(v1alpha4.DefaultAzureBastionSubnetCIDR),
+		},
+		Name: pointer.StringPtr(v1alpha4.DefaultAzureBastionSubnetName),
+	})
 
 	vnetFuture, err := vnetClient.CreateOrUpdate(ctx, groupName, os.Getenv(AzureVNetName), network.VirtualNetwork{
 		Location: pointer.StringPtr(os.Getenv(AzureLocation)),

@@ -33,65 +33,70 @@ source "${REPO_ROOT}/hack/ensure-kind.sh"
 source "${REPO_ROOT}/hack/ensure-kubectl.sh"
 # shellcheck source=../hack/ensure-kustomize.sh
 source "${REPO_ROOT}/hack/ensure-kustomize.sh"
+# shellcheck source=../hack/ensure-tags.sh
+source "${REPO_ROOT}/hack/ensure-tags.sh"
 # shellcheck source=../hack/parse-prow-creds.sh
 source "${REPO_ROOT}/hack/parse-prow-creds.sh"
+# shellcheck source=../hack/util.sh
+source "${REPO_ROOT}/hack/util.sh"
 
-# build Kubernetes E2E binaries
-build_k8s() {
-    # possibly enable bazel build caching before building kubernetes
-    if [[ "${BAZEL_REMOTE_CACHE_ENABLED:-false}" == "true" ]]; then
-        create_bazel_cache_rcs.sh || true
-    fi
-
-    pushd "$(go env GOPATH)/src/k8s.io/kubernetes"
-
-    # make sure we have e2e requirements
-    bazel build //cmd/kubectl //test/e2e:e2e.test //vendor/github.com/onsi/ginkgo/ginkgo
-
-    # ensure the e2e script will find our binaries ...
-    mkdir -p "${PWD}/_output/bin/"
-    cp -f "${PWD}/bazel-bin/test/e2e/e2e.test" "${PWD}/_output/bin/e2e.test"
-
-    PATH="$(dirname "$(find "${PWD}/bazel-bin/" -name kubectl -type f)"):${PATH}"
-    export PATH
-
-    # attempt to release some memory after building
-    sync || true
-    (echo 1 > /proc/sys/vm/drop_caches) 2>/dev/null || true
-
-    popd
+get_random_region() {
+    local REGIONS=("northcentralus" "westus" "westus2" "canadacentral" "eastus" "eastus2" "westeurope" "uksouth" "northeurope" "francecentral")
+    echo "${REGIONS[${RANDOM} % ${#REGIONS[@]}]}"
 }
 
-create_cluster() {
-    # export cluster template which contains the manifests needed for creating the Azure cluster to run the tests
-    if [[ -n ${CI_VERSION:-} || -n ${USE_CI_ARTIFACTS:-} ]]; then
+setup() {
+    # setup REGISTRY for custom images.
+    : "${REGISTRY:?Environment variable empty or not defined.}"
+    ${REPO_ROOT}/hack/ensure-acr-login.sh
+    if [[ -z "${CLUSTER_TEMPLATE:-}" ]]; then
+        select_cluster_template
+    fi
+
+    export CLUSTER_NAME="${CLUSTER_NAME:-capz-$(head /dev/urandom | LC_ALL=C tr -dc a-z0-9 | head -c 6 ; echo '')}"
+    export AZURE_RESOURCE_GROUP="${CLUSTER_NAME}"
+    export AZURE_LOCATION="${AZURE_LOCATION:-$(get_random_region)}"
+    # Need a cluster with at least 2 nodes
+    export CONTROL_PLANE_MACHINE_COUNT="${CONTROL_PLANE_MACHINE_COUNT:-1}"
+    export WORKER_MACHINE_COUNT="${WORKER_MACHINE_COUNT:-2}"
+    export EXP_CLUSTER_RESOURCE_SET="true"
+}
+
+select_cluster_template() {
+    if [[ "$(capz::util::should_build_kubernetes)" == "true" ]]; then
+        source "${REPO_ROOT}/scripts/ci-build-kubernetes.sh"
+        export CLUSTER_TEMPLATE="test/dev/cluster-template-custom-builds.yaml"
+    elif [[ -n "${CI_VERSION:-}" ]] || [[ -n "${USE_CI_ARTIFACTS:-}" ]]; then
+        # export cluster template which contains the manifests needed for creating the Azure cluster to run the tests
         KUBERNETES_BRANCH="$(cd $(go env GOPATH)/src/k8s.io/kubernetes && git rev-parse --abbrev-ref HEAD)"
         if [[ "${KUBERNETES_BRANCH:-}" =~ "release-" ]]; then
             CI_VERSION_URL="https://dl.k8s.io/ci/latest-${KUBERNETES_BRANCH/release-}.txt"
         else
             CI_VERSION_URL="https://dl.k8s.io/ci/latest.txt"
         fi
-        export CLUSTER_TEMPLATE="test/cluster-template-prow-ci-version.yaml"
+        export CLUSTER_TEMPLATE="test/ci/cluster-template-prow-ci-version.yaml"
         export CI_VERSION="${CI_VERSION:-$(curl -sSL ${CI_VERSION_URL})}"
         export KUBERNETES_VERSION="${CI_VERSION}"
     else
-        export CLUSTER_TEMPLATE="test/cluster-template-prow.yaml"
+        export CLUSTER_TEMPLATE="test/ci/cluster-template-prow.yaml"
+    fi
+
+    if [[ -n "${TEST_CCM:-}" ]]; then
+        export CLUSTER_TEMPLATE="test/ci/cluster-template-prow-external-cloud-provider.yaml"
+        source "${REPO_ROOT}/scripts/ci-build-azure-ccm.sh"
+        echo "Using CCM image ${AZURE_CLOUD_CONTROLLER_MANAGER_IMG} and CNM image ${AZURE_CLOUD_NODE_MANAGER_IMG} to build external cloud provider cluster"
     fi
 
     if [[ "${EXP_MACHINE_POOL:-}" == "true" ]]; then
-        export CLUSTER_TEMPLATE="${CLUSTER_TEMPLATE/prow/prow-machine-pool}"
+        if [[ "${CLUSTER_TEMPLATE}" =~ "prow" ]]; then
+            export CLUSTER_TEMPLATE="${CLUSTER_TEMPLATE/prow/prow-machine-pool}"
+        elif [[ "${CLUSTER_TEMPLATE}" =~ "custom-builds" ]]; then
+            export CLUSTER_TEMPLATE="${CLUSTER_TEMPLATE/custom-builds/custom-builds-machine-pool}"
+        fi
     fi
+}
 
-    export CLUSTER_NAME="capz-$(head /dev/urandom | LC_ALL=C tr -dc a-z0-9 | head -c 6 ; echo '')"
-    export AZURE_RESOURCE_GROUP=${CLUSTER_NAME}
-    # Need a cluster with at least 2 nodes
-    export CONTROL_PLANE_MACHINE_COUNT=${CONTROL_PLANE_MACHINE_COUNT:-1}
-    export WORKER_MACHINE_COUNT=${WORKER_MACHINE_COUNT:-2}
-    export REGISTRY=capz
-    export JOB_NAME="${JOB_NAME:-"cluster-api-provider-azure-conformance"}"
-    # timestamp is in RFC-3339 format to match kubetest
-    export TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-    export EXP_CLUSTER_RESOURCE_SET=true
+create_cluster() {
     ${REPO_ROOT}/hack/create-dev-cluster.sh
 }
 
@@ -108,38 +113,10 @@ wait_for_nodes() {
     kubectl get nodes -owide
 }
 
-run_upstream_e2e_tests() {
-    # ginkgo regexes
-    SKIP="${SKIP:-}"
-    FOCUS="${FOCUS:-"\\[Conformance\\]"}"
-    # if we set PARALLEL=true, skip serial tests set --ginkgo-parallel
-    if [[ "${PARALLEL:-false}" == "true" ]]; then
-        export GINKGO_PARALLEL=y
-        if [[ -z "${SKIP}" ]]; then
-            SKIP="\\[Serial\\]"
-        else
-            SKIP="\\[Serial\\]|${SKIP}"
-        fi
-    fi
-
-    # setting this env prevents ginkgo e2e from trying to run provider setup
-    export KUBERNETES_CONFORMANCE_TEST="y"
-    # run the tests
-    (cd "$(go env GOPATH)/src/k8s.io/kubernetes" && ./hack/ginkgo-e2e.sh \
-    '--provider=skeleton' \
-    "--ginkgo.focus=${FOCUS}" "--ginkgo.skip=${SKIP}" \
-    "--report-dir=${ARTIFACTS}" '--disable-log-dump=true')
-
-    unset KUBECONFIG
-    unset KUBERNETES_CONFORMANCE_TEST
-}
-
 # cleanup all resources we use
 cleanup() {
     timeout 1800 kubectl delete cluster "${CLUSTER_NAME}" || true
     make kind-reset || true
-    # clean up e2e.test symlink
-    (cd "$(go env GOPATH)/src/k8s.io/kubernetes" && rm -f _output/bin/e2e.test) || true
 }
 
 on_exit() {
@@ -151,25 +128,20 @@ on_exit() {
     fi
 }
 
+# setup all required variables and images
+setup
+
 trap on_exit EXIT
 export ARTIFACTS="${ARTIFACTS:-${PWD}/_artifacts}"
 
 # create cluster
-if [[ -z "${SKIP_CREATE_WORKLOAD_CLUSTER:-}" ]]; then
-    create_cluster
-fi
+create_cluster
 
 # export the target cluster KUBECONFIG if not already set
 export KUBECONFIG="${KUBECONFIG:-${PWD}/kubeconfig}"
 
 export -f wait_for_nodes
 timeout --foreground 1800 bash -c wait_for_nodes
-
-# build k8s binaries and run upstream e2e tests
-if [[ -z "${SKIP_UPSTREAM_E2E_TESTS:-}" ]]; then
-    build_k8s
-    run_upstream_e2e_tests
-fi
 
 if [[ "${#}" -gt 0 ]]; then
     # disable error exit so we can run post-command cleanup

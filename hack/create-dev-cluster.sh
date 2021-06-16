@@ -30,7 +30,6 @@ export REGISTRY="${REGISTRY:-registry.local/fake}"
 # Cluster settings.
 export CLUSTER_NAME="${CLUSTER_NAME:-capz-test}"
 export AZURE_VNET_NAME=${CLUSTER_NAME}-vnet
-export AZURE_ENVIRONMENT="AzurePublicCloud"
 
 # Azure settings.
 export AZURE_LOCATION="${AZURE_LOCATION:-southcentralus}"
@@ -46,7 +45,7 @@ export AZURE_CONTROL_PLANE_MACHINE_TYPE="${CONTROL_PLANE_MACHINE_TYPE:-Standard_
 export AZURE_NODE_MACHINE_TYPE="${NODE_MACHINE_TYPE:-Standard_D2s_v3}"
 export WORKER_MACHINE_COUNT=${WORKER_MACHINE_COUNT:-2}
 export KUBERNETES_VERSION="${KUBERNETES_VERSION:-v1.19.7}"
-export TEMPLATE_PATH="${TEMPLATE_PATH:-cluster-template.yaml}"
+export CLUSTER_TEMPLATE="${CLUSTER_TEMPLATE:-cluster-template.yaml}"
 
 # Generate SSH key.
 SSH_KEY_FILE=${SSH_KEY_FILE:-""}

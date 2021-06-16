@@ -13,6 +13,7 @@ linters:
     - errorlint
     - goconst
     - gocyclo
+    - godot
     - gofmt
     - goimports
     - golint
@@ -21,7 +22,6 @@ linters:
     - govet
     - ineffassign
     - interfacer
-    - maligned
     - misspell
     - nakedret
     - prealloc
@@ -40,7 +40,7 @@ issues:
     - path: cloudtest\.go
       linters:
         - golint
-    - path: api/v1alpha2/types\.go
+    - path: api/v1alpha3/types\.go
       linters:
         - golint
     - path: _test\.go

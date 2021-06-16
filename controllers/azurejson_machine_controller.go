@@ -22,14 +22,14 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -39,13 +39,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha3"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/scope"
+	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha4"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/scope"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
 )
 
-// AzureJSONMachineReconciler reconciles azure json secrets for AzureMachine objects
+// AzureJSONMachineReconciler reconciles Azure json secrets for AzureMachine objects.
 type AzureJSONMachineReconciler struct {
 	client.Client
 	Log              logr.Logger
@@ -53,8 +53,8 @@ type AzureJSONMachineReconciler struct {
 	ReconcileTimeout time.Duration
 }
 
-// SetupWithManager initializes this controller with a manager
-func (r *AzureJSONMachineReconciler) SetupWithManager(mgr ctrl.Manager, options controller.Options) error {
+// SetupWithManager initializes this controller with a manager.
+func (r *AzureJSONMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.AzureMachine{}).
 		WithEventFilter(filterUnclonedMachinesPredicate{log: r.Log}).
@@ -73,20 +73,14 @@ func (f filterUnclonedMachinesPredicate) Create(e event.CreateEvent) bool {
 
 func (f filterUnclonedMachinesPredicate) Update(e event.UpdateEvent) bool {
 	return f.Generic(event.GenericEvent{
-		Meta:   e.MetaNew,
 		Object: e.ObjectNew,
 	})
 }
 
-// Generic implements default GenericEvent filter
+// Generic implements a default GenericEvent filter.
 func (f filterUnclonedMachinesPredicate) Generic(e event.GenericEvent) bool {
 	if e.Object == nil {
 		f.log.Error(nil, "Generic event has no old metadata", "event", e)
-		return false
-	}
-
-	if e.Meta == nil {
-		f.log.Error(nil, "Generic event has no new metadata", "event", e)
 		return false
 	}
 
@@ -95,22 +89,22 @@ func (f filterUnclonedMachinesPredicate) Generic(e event.GenericEvent) bool {
 	// or machinedeployment, we already created a secret for the template. All machines
 	// in the machinedeployment will share that one secret.
 	gvk := infrav1.GroupVersion.WithKind("AzureMachineTemplate")
-	isClonedFromTemplate := e.Meta.GetAnnotations()[clusterv1.TemplateClonedFromGroupKindAnnotation] == gvk.GroupKind().String()
+	isClonedFromTemplate := e.Object.GetAnnotations()[clusterv1.TemplateClonedFromGroupKindAnnotation] == gvk.GroupKind().String()
 
 	return !isClonedFromTemplate
 }
 
-// Reconcile reconciles the azure json for a specific machine not in a machine deployment
-func (r *AzureJSONMachineReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, reterr error) {
-	ctx, cancel := context.WithTimeout(context.Background(), reconciler.DefaultedLoopTimeout(r.ReconcileTimeout))
+// Reconcile reconciles the Azure json for a specific machine not in a machine deployment.
+func (r *AzureJSONMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reterr error) {
+	ctx, cancel := context.WithTimeout(ctx, reconciler.DefaultedLoopTimeout(r.ReconcileTimeout))
 	defer cancel()
 	log := r.Log.WithValues("namespace", req.Namespace, "azureMachine", req.Name)
 
 	ctx, span := tele.Tracer().Start(ctx, "controllers.AzureJSONMachineReconciler.Reconcile",
 		trace.WithAttributes(
-			label.String("namespace", req.Namespace),
-			label.String("name", req.Name),
-			label.String("kind", "AzureMachine"),
+			attribute.String("namespace", req.Namespace),
+			attribute.String("name", req.Name),
+			attribute.String("kind", "AzureMachine"),
 		))
 	defer span.End()
 
@@ -198,7 +192,7 @@ func (r *AzureJSONMachineReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result,
 	)
 
 	if err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "failed to create cloud provider config")
+		return ctrl.Result{}, errors.Wrap(err, "failed to create cloud provider config")
 	}
 
 	if err := reconcileAzureSecret(ctx, log, r.Client, owner, newSecret, clusterScope.ClusterName()); err != nil {

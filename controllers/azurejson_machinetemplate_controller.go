@@ -22,8 +22,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,13 +36,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha3"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/scope"
+	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha4"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/scope"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
 )
 
-// AzureJSONTemplateReconciler reconciles azure json secrets for AzureMachineTemplate objects
+// AzureJSONTemplateReconciler reconciles Azure json secrets for AzureMachineTemplate objects.
 type AzureJSONTemplateReconciler struct {
 	client.Client
 	Log              logr.Logger
@@ -51,7 +51,7 @@ type AzureJSONTemplateReconciler struct {
 }
 
 // SetupWithManager initializes this controller with a manager.
-func (r *AzureJSONTemplateReconciler) SetupWithManager(mgr ctrl.Manager, options controller.Options) error {
+func (r *AzureJSONTemplateReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&infrav1.AzureMachineTemplate{}).
@@ -59,17 +59,17 @@ func (r *AzureJSONTemplateReconciler) SetupWithManager(mgr ctrl.Manager, options
 		Complete(r)
 }
 
-// Reconcile reconciles azure json secrets for azure machine templates
-func (r *AzureJSONTemplateReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, reterr error) {
-	ctx, cancel := context.WithTimeout(context.Background(), reconciler.DefaultedLoopTimeout(r.ReconcileTimeout))
+// Reconcile reconciles Azure json secrets for Azure machine templates.
+func (r *AzureJSONTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reterr error) {
+	ctx, cancel := context.WithTimeout(ctx, reconciler.DefaultedLoopTimeout(r.ReconcileTimeout))
 	defer cancel()
 	log := r.Log.WithValues("namespace", req.Namespace, "azureMachineTemplate", req.Name)
 
 	ctx, span := tele.Tracer().Start(ctx, "controllers.AzureJSONTemplateReconciler.Reconcile",
 		trace.WithAttributes(
-			label.String("namespace", req.Namespace),
-			label.String("name", req.Name),
-			label.String("kind", "AzureMachineTemplate"),
+			attribute.String("namespace", req.Namespace),
+			attribute.String("name", req.Name),
+			attribute.String("kind", "AzureMachineTemplate"),
 		))
 	defer span.End()
 
@@ -155,7 +155,7 @@ func (r *AzureJSONTemplateReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result
 	)
 
 	if err != nil {
-		return ctrl.Result{}, errors.Wrapf(err, "failed to create cloud provider config")
+		return ctrl.Result{}, errors.Wrap(err, "failed to create cloud provider config")
 	}
 
 	if err := reconcileAzureSecret(ctx, log, r.Client, owner, newSecret, clusterScope.ClusterName()); err != nil {

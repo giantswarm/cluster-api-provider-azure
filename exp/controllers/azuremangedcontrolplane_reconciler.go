@@ -27,31 +27,31 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util/secret"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	azure "sigs.k8s.io/cluster-api-provider-azure/cloud"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/scope"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/groups"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/managedclusters"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/subnets"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/virtualnetworks"
-	infrav1exp "sigs.k8s.io/cluster-api-provider-azure/exp/api/v1alpha3"
+	"sigs.k8s.io/cluster-api-provider-azure/azure"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/scope"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/groups"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/managedclusters"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/subnets"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/virtualnetworks"
+	infrav1exp "sigs.k8s.io/cluster-api-provider-azure/exp/api/v1alpha4"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
 )
 
-// azureManagedControlPlaneReconciler are list of services required by cluster controller
+// azureManagedControlPlaneReconciler contains the services required by the cluster controller.
 type azureManagedControlPlaneReconciler struct {
 	kubeclient         client.Client
 	managedClustersSvc *managedclusters.Service
-	groupsSvc          azure.Service
-	vnetSvc            azure.Service
-	subnetsSvc         azure.Service
+	groupsSvc          azure.Reconciler
+	vnetSvc            azure.Reconciler
+	subnetsSvc         azure.Reconciler
 }
 
-// newAzureManagedControlPlaneReconciler populates all the services based on input scope
+// newAzureManagedControlPlaneReconciler populates all the services based on input scope.
 func newAzureManagedControlPlaneReconciler(scope *scope.ManagedControlPlaneScope) *azureManagedControlPlaneReconciler {
 	return &azureManagedControlPlaneReconciler{
 		kubeclient:         scope.Client,
@@ -62,14 +62,14 @@ func newAzureManagedControlPlaneReconciler(scope *scope.ManagedControlPlaneScope
 	}
 }
 
-// Reconcile reconciles all the services in pre determined order
+// Reconcile reconciles all the services in a predetermined order.
 func (r *azureManagedControlPlaneReconciler) Reconcile(ctx context.Context, scope *scope.ManagedControlPlaneScope) error {
 	ctx, span := tele.Tracer().Start(ctx, "controllers.azureManagedControlPlaneReconciler.Reconcile")
 	defer span.End()
 
 	decodedSSHPublicKey, err := base64.StdEncoding.DecodeString(scope.ControlPlane.Spec.SSHPublicKey)
 	if err != nil {
-		return errors.Wrapf(err, "failed to decode SSHPublicKey")
+		return errors.Wrap(err, "failed to decode SSHPublicKey")
 	}
 
 	managedClusterSpec := &managedclusters.Spec{
@@ -101,38 +101,38 @@ func (r *azureManagedControlPlaneReconciler) Reconcile(ctx context.Context, scop
 
 	scope.V(2).Info("Reconciling managed cluster resource group")
 	if err := r.groupsSvc.Reconcile(ctx); err != nil {
-		return errors.Wrapf(err, "failed to reconcile managed cluster resource group")
+		return errors.Wrap(err, "failed to reconcile managed cluster resource group")
 	}
 
 	scope.V(2).Info("Reconciling virtual network")
 	if err := r.vnetSvc.Reconcile(ctx); err != nil {
-		return errors.Wrapf(err, "failed to reconcile virtual network")
+		return errors.Wrap(err, "failed to reconcile virtual network")
 	}
 
 	scope.V(2).Info("Reconciling subnet")
 	if err := r.subnetsSvc.Reconcile(ctx); err != nil {
-		return errors.Wrapf(err, "failed to reconcile subnet")
+		return errors.Wrap(err, "failed to reconcile subnet")
 	}
 
 	scope.V(2).Info("Reconciling managed cluster")
 	if err := r.reconcileManagedCluster(ctx, scope, managedClusterSpec); err != nil {
-		return errors.Wrapf(err, "failed to reconcile managed cluster")
+		return errors.Wrap(err, "failed to reconcile managed cluster")
 	}
 
 	scope.V(2).Info("Reconciling endpoint")
 	if err := r.reconcileEndpoint(ctx, scope, managedClusterSpec); err != nil {
-		return errors.Wrapf(err, "failed to reconcile control plane endpoint")
+		return errors.Wrap(err, "failed to reconcile control plane endpoint")
 	}
 
 	scope.V(2).Info("Reconciling kubeconfig")
 	if err := r.reconcileKubeconfig(ctx, scope, managedClusterSpec); err != nil {
-		return errors.Wrapf(err, "failed to reconcile kubeconfig secret")
+		return errors.Wrap(err, "failed to reconcile kubeconfig secret")
 	}
 
 	return nil
 }
 
-// Delete reconciles all the services in pre determined order
+// Delete reconciles all the services in a predetermined order.
 func (r *azureManagedControlPlaneReconciler) Delete(ctx context.Context, scope *scope.ManagedControlPlaneScope) error {
 	ctx, span := tele.Tracer().Start(ctx, "controllers.azureManagedControlPlaneReconciler.Delete")
 	defer span.End()
@@ -147,9 +147,14 @@ func (r *azureManagedControlPlaneReconciler) Delete(ctx context.Context, scope *
 		return errors.Wrapf(err, "failed to delete managed cluster %s", scope.ControlPlane.Name)
 	}
 
+	scope.V(2).Info("Deleting virtual network")
+	if err := r.vnetSvc.Delete(ctx); err != nil {
+		return errors.Wrap(err, "failed to delete virtual network")
+	}
+
 	scope.V(2).Info("Deleting managed cluster resource group")
-	if err := r.groupsSvc.Delete(ctx); err != nil {
-		return errors.Wrapf(err, "failed to delete managed cluster resource group")
+	if err := r.groupsSvc.Delete(ctx); err != nil && !errors.Is(err, azure.ErrNotOwned) {
+		return errors.Wrap(err, "failed to delete managed cluster resource group")
 	}
 
 	return nil
@@ -200,7 +205,7 @@ func (r *azureManagedControlPlaneReconciler) reconcileManagedCluster(ctx context
 	_, err := r.managedClustersSvc.Get(ctx, managedClusterSpec)
 	// Transient or other failure not due to 404
 	if err != nil && !azure.ResourceNotFound(err) {
-		return errors.Wrapf(err, "failed to fetch existing managed cluster")
+		return errors.Wrap(err, "failed to fetch existing managed cluster")
 	}
 
 	// We are creating this cluster for the first time.
@@ -249,7 +254,7 @@ func (r *azureManagedControlPlaneReconciler) reconcileEndpoint(ctx context.Conte
 		return fmt.Errorf("expected containerservice ManagedCluster object")
 	}
 
-	old := scope.ControlPlane.DeepCopyObject()
+	old := scope.ControlPlane.DeepCopy()
 
 	scope.ControlPlane.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{
 		Host: *managedCluster.ManagedClusterProperties.Fqdn,
@@ -257,7 +262,7 @@ func (r *azureManagedControlPlaneReconciler) reconcileEndpoint(ctx context.Conte
 	}
 
 	if err := r.kubeclient.Patch(ctx, scope.ControlPlane, client.MergeFrom(old)); err != nil {
-		return errors.Wrapf(err, "failed to set control plane endpoint")
+		return errors.Wrap(err, "failed to set control plane endpoint")
 	}
 
 	return nil
@@ -270,7 +275,7 @@ func (r *azureManagedControlPlaneReconciler) reconcileKubeconfig(ctx context.Con
 	// Always fetch credentials in case of rotation
 	data, err := r.managedClustersSvc.GetCredentials(ctx, managedClusterSpec.ResourceGroupName, managedClusterSpec.Name)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get credentials for managed cluster")
+		return errors.Wrap(err, "failed to get credentials for managed cluster")
 	}
 
 	// Construct and store secret
@@ -281,7 +286,7 @@ func (r *azureManagedControlPlaneReconciler) reconcileKubeconfig(ctx context.Con
 		}
 		return nil
 	}); err != nil {
-		return errors.Wrapf(err, "failed to kubeconfig secret for cluster")
+		return errors.Wrap(err, "failed to kubeconfig secret for cluster")
 	}
 	return nil
 }

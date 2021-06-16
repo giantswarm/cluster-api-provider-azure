@@ -26,14 +26,17 @@ import (
 	"path"
 	"path/filepath"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	e2e_namespace "sigs.k8s.io/cluster-api-provider-azure/test/e2e/kubernetes/namespace"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/test/framework"
-	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/kubeconfig"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -47,12 +50,7 @@ const (
 	AzureInternalLBIP        = "AZURE_INTERNAL_LB_IP"
 	AzureCPSubnetCidr        = "AZURE_CP_SUBNET_CIDR"
 	AzureNodeSubnetCidr      = "AZURE_NODE_SUBNET_CIDR"
-	CNIPathIPv6              = "CNI_IPV6"
-	CNIResourcesIPv6         = "CNI_RESOURCES_IPV6"
-	CNIPathWindows           = "CNI_WINDOWS"
-	CNIResourcesWindows      = "CNI_RESOURCES_WINDOWS"
 	MultiTenancyIdentityName = "MULTI_TENANCY_IDENTITY_NAME"
-	VMSSHPort                = "VM_SSH_PORT"
 	JobName                  = "JOB_NAME"
 	Timestamp                = "TIMESTAMP"
 )
@@ -61,16 +59,40 @@ func Byf(format string, a ...interface{}) {
 	By(fmt.Sprintf(format, a...))
 }
 
-func setupSpecNamespace(ctx context.Context, specName string, clusterProxy framework.ClusterProxy, artifactFolder string) (*corev1.Namespace, context.CancelFunc) {
-	Byf("Creating a namespace for hosting the %q test spec", specName)
+func setupSpecNamespace(ctx context.Context, namespaceName string, clusterProxy framework.ClusterProxy, artifactFolder string) (*corev1.Namespace, context.CancelFunc, error) {
+	Byf("Creating namespace %q for hosting the cluster", namespaceName)
+	Logf("starting to create namespace for hosting the %q test spec", namespaceName)
+	logPath := filepath.Join(artifactFolder, "clusters", clusterProxy.GetName())
+	namespace, err := e2e_namespace.Get(ctx, clusterProxy.GetClientSet(), namespaceName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, nil, err
+	}
+
+	// namespace exists wire it up
+	if err == nil {
+		Byf("Creating event watcher for existing namespace %q", namespace.Name)
+		watchesCtx, cancelWatches := context.WithCancel(ctx)
+		go func() {
+			defer GinkgoRecover()
+			framework.WatchNamespaceEvents(watchesCtx, framework.WatchNamespaceEventsInput{
+				ClientSet: clusterProxy.GetClientSet(),
+				Name:      namespace.Name,
+				LogFolder: logPath,
+			})
+		}()
+
+		return namespace, cancelWatches, nil
+	}
+
+	// create and wire up namespace
 	namespace, cancelWatches := framework.CreateNamespaceAndWatchEvents(ctx, framework.CreateNamespaceAndWatchEventsInput{
 		Creator:   clusterProxy.GetClient(),
 		ClientSet: clusterProxy.GetClientSet(),
-		Name:      fmt.Sprintf("%s-%s", specName, util.RandomString(6)),
-		LogFolder: filepath.Join(artifactFolder, "clusters", clusterProxy.GetName()),
+		Name:      namespaceName,
+		LogFolder: logPath,
 	})
 
-	return namespace, cancelWatches
+	return namespace, cancelWatches, nil
 }
 
 func dumpSpecResourcesAndCleanup(ctx context.Context, specName string, clusterProxy framework.ClusterProxy, artifactFolder string, namespace *corev1.Namespace, cancelWatches context.CancelFunc, cluster *clusterv1.Cluster, intervalsGetter func(spec, key string) []interface{}, skipCleanup bool) {
@@ -83,7 +105,7 @@ func dumpSpecResourcesAndCleanup(ctx context.Context, specName string, clusterPr
 		By("Unable to dump workload cluster logs as the cluster is nil")
 	} else {
 		Byf("Dumping logs from the %q workload cluster", cluster.Name)
-		clusterProxy.CollectWorkloadClusterLogs(ctx, cluster.Namespace, cluster.Name, filepath.Join(artifactFolder, "clusters", cluster.Name, "machines"))
+		clusterProxy.CollectWorkloadClusterLogs(ctx, cluster.Namespace, cluster.Name, filepath.Join(artifactFolder, "clusters", cluster.Name))
 	}
 
 	Byf("Dumping all the Cluster API resources in the %q namespace", namespace.Name)
@@ -121,7 +143,7 @@ func redactLogs() {
 	cmd.Run()
 }
 
-func createRestConfig(tmpdir, namespace, clusterName string) *rest.Config {
+func createRestConfig(ctx context.Context, tmpdir, namespace, clusterName string) *rest.Config {
 	cluster := crclient.ObjectKey{
 		Namespace: namespace,
 		Name:      clusterName,

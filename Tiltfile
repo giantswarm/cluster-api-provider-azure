@@ -1,6 +1,10 @@
 # -*- mode: Python -*-
 
 envsubst_cmd = "./hack/tools/bin/envsubst"
+tools_bin = "./hack/tools/bin"
+
+#Add tools to path
+os.putenv('PATH', os.getenv('PATH') + ':' + tools_bin) 
 
 update_settings(k8s_upsert_timeout_secs=60)  # on first tilt up, often can take longer than 30 seconds
 
@@ -12,10 +16,10 @@ settings = {
     "deploy_cert_manager": True,
     "preload_images_for_kind": True,
     "kind_cluster_name": "capz",
-    "capi_version": "v0.3.13",
-    "cert_manager_version": "v0.16.1",
-    "kubernetes_version": "v1.19.7",
-    "aks_kubernetes_version": "v1.18.8"
+    "capi_version": "v0.4.0-beta.0",
+    "cert_manager_version": "v1.1.0",
+    "kubernetes_version": "v1.19.11",
+    "aks_kubernetes_version": "v1.20.5"
 }
 
 keys = ["AZURE_SUBSCRIPTION_ID_B64", "AZURE_TENANT_ID_B64", "AZURE_CLIENT_SECRET_B64", "AZURE_CLIENT_ID_B64"]
@@ -48,7 +52,6 @@ def deploy_capi():
             if core_extra_args:
                 for namespace in ["capi-system", "capi-webhook-system"]:
                     patch_args_with_extra_args(namespace, "capi-controller-manager", core_extra_args)
-                patch_capi_manager_role_with_exp_infra_rbac()
         if extra_args.get("kubeadm-bootstrap"):
             kb_extra_args = extra_args.get("kubeadm-bootstrap")
             if kb_extra_args:
@@ -67,21 +70,6 @@ def patch_args_with_extra_args(namespace, name, extra_args):
             "value": args,
         }]
         local("kubectl patch deployment {} -n {} --type json -p='{}'".format(name, namespace, str(encode_json(patch)).replace("\n", "")))
-
-
-# patch the CAPI manager role to also provide access to experimental infrastructure
-def patch_capi_manager_role_with_exp_infra_rbac():
-    api_groups_str = str(local('kubectl get clusterrole capi-manager-role -o jsonpath={.rules[1].apiGroups}'))
-    exp_infra_group = "exp.infrastructure.cluster.x-k8s.io"
-    if exp_infra_group not in api_groups_str:
-        groups = api_groups_str[1:-1].split() # "[arg1 arg2 ...]" trim off the first and last, then split
-        groups.append(exp_infra_group)
-        patch = [{
-            "op": "replace",
-            "path": "/rules/1/apiGroups",
-            "value": groups,
-        }]
-        local("kubectl patch clusterrole capi-manager-role --type json -p='{}'".format(str(encode_json(patch)).replace("\n", "")))
 
 
 # Users may define their own Tilt customizations in tilt.d. This directory is excluded from git and these files will
@@ -108,13 +96,13 @@ def fixup_yaml_empty_arrays(yaml_str):
 
 def validate_auth():
     substitutions = settings.get("kustomize_substitutions", {})
-    missing = [k for k in keys if k not in substitutions]
+    missing = [k for k in keys if k not in substitutions and not os.environ.get(k)]
     if missing:
         fail("missing kustomize_substitutions keys {} in tilt-setting.json".format(missing))
 
 tilt_helper_dockerfile_header = """
 # Tilt image
-FROM golang:1.15.3 as tilt-helper
+FROM golang:1.16 as tilt-helper
 # Support live reloading with Tilt
 RUN wget --output-document /restart.sh --quiet https://raw.githubusercontent.com/windmilleng/rerun-process-wrapper/master/restart.sh  && \
     wget --output-document /start.sh --quiet https://raw.githubusercontent.com/windmilleng/rerun-process-wrapper/master/start.sh && \
@@ -153,21 +141,6 @@ def capz():
         deps = ["api", "cloud", "config", "controllers", "exp", "feature", "pkg", "go.mod", "go.sum", "main.go"]
     )
 
-    k8s_resource('capz-controller-manager:deployment:capz-system', objects=[
-        'azureclusters.infrastructure.cluster.x-k8s.io:customresourcedefinition',
-        'azuremachinepools.exp.infrastructure.cluster.x-k8s.io:customresourcedefinition',
-        'azuremachines.infrastructure.cluster.x-k8s.io:customresourcedefinition',
-        'azuremachinetemplates.infrastructure.cluster.x-k8s.io:customresourcedefinition',
-        'azuremanagedclusters.exp.infrastructure.cluster.x-k8s.io:customresourcedefinition',
-        'azuremanagedcontrolplanes.exp.infrastructure.cluster.x-k8s.io:customresourcedefinition',
-        'azuremanagedmachinepools.exp.infrastructure.cluster.x-k8s.io:customresourcedefinition',
-    ])
-
-    k8s_resource('capz-controller-manager:deployment:capi-webhook-system', objects=[
-        'capz-validating-webhook-configuration:validatingwebhookconfiguration',
-        'capz-mutating-webhook-configuration:mutatingwebhookconfiguration',
-    ])
-
     dockerfile_contents = "\n".join([
         tilt_helper_dockerfile_header,
         tilt_dockerfile_header,
@@ -205,13 +178,10 @@ def create_crs():
     local("kubectl delete configmaps flannel-windows-addon --ignore-not-found=true")
 
     # need to set version for kube-proxy on windows.  
-    # This file is processed then reapply \\ due to the named pipes which need to be escaped for a bug in envsubst library
-	# https://github.com/kubernetes-sigs/cluster-api/issues/4016
     os.putenv("KUBERNETES_VERSION", settings.get("kubernetes_version", {}))
-    local("kubectl create configmap flannel-windows-addon --from-file=templates/addons/windows/ --dry-run=client -o yaml | " + envsubst_cmd + " | sed -e 's/\\\\/\\\\\\\\/' | kubectl apply -f -")
+    local("kubectl create configmap flannel-windows-addon --from-file=templates/addons/windows/ --dry-run=client -o yaml | " + envsubst_cmd + " | kubectl apply -f -")
 
     # set up crs
-    local("kubectl wait --for=condition=Available --timeout=300s -n capi-webhook-system deployment/capi-controller-manager")
     local("kubectl apply -f templates/addons/calico-resource-set.yaml")
     local("kubectl apply -f templates/addons/flannel-resource-set.yaml")
 
@@ -225,15 +195,22 @@ def flavors():
     substitutions = settings.get("kustomize_substitutions", {})
     for key in keys:
         if key[-4:] == "_B64":
-            substitutions[key[:-4]] = base64_decode(substitutions[key])
+            os.environ[key[:-4]] = base64_decode(os.environ[key])
 
-    ssh_pub_key = "AZURE_SSH_PUBLIC_KEY_B64"
-    ssh_pub_key_path = "~/.ssh/id_rsa.pub"
+    ssh_pub_key_B64 = "AZURE_SSH_PUBLIC_KEY_B64"
+    ssh_pub_key_path = "$HOME/.ssh/id_rsa.pub"
+    if substitutions.get(ssh_pub_key_B64):
+        os.environ.update({ssh_pub_key_B64: substitutions.get(ssh_pub_key_B64)})
+    else:
+        print("{} was not specified in tilt_config.json, attempting to load {}".format(ssh_pub_key_B64, ssh_pub_key_path))
+        os.environ.update({ssh_pub_key_B64: base64_encode_file(ssh_pub_key_path)})
+    
+    ssh_pub_key = "AZURE_SSH_PUBLIC_KEY"
     if substitutions.get(ssh_pub_key):
         os.environ.update({ssh_pub_key: substitutions.get(ssh_pub_key)})
     else:
-        print("{} was not specified in tilt_config.json, attempting to load {}".format(ssh_pub_key, ssh_pub_key_path))
-        os.environ.update({ssh_pub_key: base64_encode_file(ssh_pub_key_path)})
+        print("{} was not specified in tilt_config.json, attempting to load {}".format(ssh_pub_key_B64, ssh_pub_key_path))
+        os.environ.update({ssh_pub_key: read_file_from_path(ssh_pub_key_path)})
 
     templatelist = [ item for item in listdir("./templates") ]
     for template in templatelist:
@@ -296,7 +273,6 @@ def deploy_worker_templates(template, substitutions):
         value = substitutions[substitution]
         yaml = yaml.replace("${" + substitution + "}", value)
 
-    yaml = envsubst(yaml)
     yaml = yaml.replace('"', '\\"')     # add escape character to double quotes in yaml
 
     local_resource(
@@ -316,19 +292,23 @@ def base64_encode_file(path_to_encode):
     encode_blob = local("cat {} | tr -d '\n' | base64 - | tr -d '\n'".format(path_to_encode), quiet=True)
     return str(encode_blob)
 
+def read_file_from_path(path_to_read):
+    str_blob = local("cat {} | tr -d '\n'".format(path_to_read), quiet=True)
+    return str(str_blob)
 
 def base64_decode(to_decode):
     decode_blob = local("echo '{}' | base64 --decode -".format(to_decode), quiet=True)
     return str(decode_blob)
 
-def envsubst(yaml):
-    yaml = yaml.replace('"', '\\"')
-    return str(local("echo \"{}\" | {}".format(yaml, envsubst_cmd), quiet=True))
-
 def kustomizesub(folder):
     yaml = local('hack/kustomize-sub.sh {}'.format(folder), quiet=True)
     return yaml
 
+def waitforsystem():
+    local("kubectl wait --for=condition=ready --timeout=300s pod --all -n capi-kubeadm-bootstrap-system")
+    local("kubectl wait --for=condition=ready --timeout=300s pod --all -n capi-kubeadm-control-plane-system")
+    local("kubectl wait --for=condition=ready --timeout=300s pod --all -n capi-system")
+    
 ##############################
 # Actual work happens here
 ##############################
@@ -345,6 +325,8 @@ if settings.get("deploy_cert_manager"):
 deploy_capi()
 
 capz()
+
+waitforsystem()
 
 create_crs()
 

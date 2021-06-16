@@ -27,11 +27,13 @@ import (
 	. "github.com/onsi/gomega"
 
 	capi_e2e "sigs.k8s.io/cluster-api/test/e2e"
+	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/util"
 )
 
 var _ = Describe("Running the Cluster API E2E tests", func() {
 	BeforeEach(func() {
+		Expect(e2eConfig.Variables).To(HaveKey(capi_e2e.CNIPath))
 		rgName := fmt.Sprintf("capz-e2e-%s", util.RandomString(6))
 		Expect(os.Setenv(AzureResourceGroup, rgName)).NotTo(HaveOccurred())
 		Expect(os.Setenv(AzureVNetName, fmt.Sprintf("%s-vnet", rgName))).NotTo(HaveOccurred())
@@ -55,14 +57,28 @@ var _ = Describe("Running the Cluster API E2E tests", func() {
 		})
 	})
 
-	Context("Running the KCP upgrade spec", func() {
+	Context("Running the KCP upgrade spec in a single control plane cluster", func() {
 		capi_e2e.KCPUpgradeSpec(context.TODO(), func() capi_e2e.KCPUpgradeSpecInput {
 			return capi_e2e.KCPUpgradeSpecInput{
-				E2EConfig:             e2eConfig,
-				ClusterctlConfigPath:  clusterctlConfigPath,
-				BootstrapClusterProxy: bootstrapClusterProxy,
-				ArtifactFolder:        artifactFolder,
-				SkipCleanup:           skipCleanup,
+				E2EConfig:                e2eConfig,
+				ClusterctlConfigPath:     clusterctlConfigPath,
+				BootstrapClusterProxy:    bootstrapClusterProxy,
+				ArtifactFolder:           artifactFolder,
+				ControlPlaneMachineCount: 1,
+				SkipCleanup:              skipCleanup,
+			}
+		})
+	})
+
+	Context("Running the KCP upgrade spec in a HA cluster", func() {
+		capi_e2e.KCPUpgradeSpec(context.TODO(), func() capi_e2e.KCPUpgradeSpecInput {
+			return capi_e2e.KCPUpgradeSpecInput{
+				E2EConfig:                e2eConfig,
+				ClusterctlConfigPath:     clusterctlConfigPath,
+				BootstrapClusterProxy:    bootstrapClusterProxy,
+				ArtifactFolder:           artifactFolder,
+				ControlPlaneMachineCount: 3,
+				SkipCleanup:              skipCleanup,
 			}
 		})
 	})
@@ -110,7 +126,7 @@ var _ = Describe("Running the Cluster API E2E tests", func() {
 			return capi_e2e.KCPAdoptionSpecInput{
 				E2EConfig:             e2eConfig,
 				ClusterctlConfigPath:  clusterctlConfigPath,
-				BootstrapClusterProxy: bootstrapClusterProxy.(capi_e2e.ClusterProxy),
+				BootstrapClusterProxy: bootstrapClusterProxy.(framework.ClusterProxy),
 				ArtifactFolder:        artifactFolder,
 				SkipCleanup:           skipCleanup,
 			}
@@ -122,7 +138,7 @@ var _ = Describe("Running the Cluster API E2E tests", func() {
 			return capi_e2e.MachinePoolInput{
 				E2EConfig:             e2eConfig,
 				ClusterctlConfigPath:  clusterctlConfigPath,
-				BootstrapClusterProxy: bootstrapClusterProxy.(capi_e2e.ClusterProxy),
+				BootstrapClusterProxy: bootstrapClusterProxy.(framework.ClusterProxy),
 				ArtifactFolder:        artifactFolder,
 				SkipCleanup:           skipCleanup,
 			}

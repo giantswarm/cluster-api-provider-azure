@@ -22,6 +22,8 @@ import (
 	"os"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/google/go-cmp/cmp"
@@ -35,13 +37,12 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha3"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/scope"
+	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha4"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/scope"
 	"sigs.k8s.io/cluster-api-provider-azure/internal/test/mock_log"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 )
 
 func TestAzureClusterToAzureMachinesMapper(t *testing.T) {
@@ -55,27 +56,25 @@ func TestAzureClusterToAzureMachinesMapper(t *testing.T) {
 		newMachineWithInfrastructureRef(clusterName, "my-machine-1"),
 		newMachine(clusterName, "my-machine-2"),
 	}
-	client := fake.NewFakeClientWithScheme(scheme, initObjects...)
+	client := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(initObjects...).Build()
 
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
 	log := mock_log.NewMockLogger(mockCtrl)
 	log.EXPECT().WithValues("AzureCluster", "my-cluster", "Namespace", "default")
-	mapper, err := AzureClusterToAzureMachinesMapper(client, scheme, log)
+	mapper, err := AzureClusterToAzureMachinesMapper(context.Background(), client, &infrav1.AzureMachine{}, scheme, log)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	requests := mapper.Map(handler.MapObject{
-		Object: &infrav1.AzureCluster{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      clusterName,
-				Namespace: "default",
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						Name:       clusterName,
-						Kind:       "Cluster",
-						APIVersion: clusterv1.GroupVersion.String(),
-					},
+	requests := mapper(&infrav1.AzureCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clusterName,
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					Name:       clusterName,
+					Kind:       "Cluster",
+					APIVersion: clusterv1.GroupVersion.String(),
 				},
 			},
 		},
@@ -85,6 +84,9 @@ func TestAzureClusterToAzureMachinesMapper(t *testing.T) {
 
 func TestGetCloudProviderConfig(t *testing.T) {
 	g := NewWithT(t)
+	scheme := runtime.NewScheme()
+	_ = clusterv1.AddToScheme(scheme)
+	_ = infrav1.AddToScheme(scheme)
 
 	cluster := newCluster("foo")
 	cluster.Default()
@@ -130,6 +132,20 @@ func TestGetCloudProviderConfig(t *testing.T) {
 			expectedControlPlaneConfig: spCustomVnetControlPlaneCloudConfig,
 			expectedWorkerNodeConfig:   spCustomVnetWorkerNodeCloudConfig,
 		},
+		"with rate limits": {
+			cluster:                    cluster,
+			azureCluster:               withRateLimits(*azureCluster),
+			identityType:               infrav1.VMIdentityNone,
+			expectedControlPlaneConfig: rateLimitsControlPlaneCloudConfig,
+			expectedWorkerNodeConfig:   rateLimitsWorkerNodeCloudConfig,
+		},
+		"with back-off config": {
+			cluster:                    cluster,
+			azureCluster:               withbackOffConfig(*azureCluster),
+			identityType:               infrav1.VMIdentityNone,
+			expectedControlPlaneConfig: backOffCloudConfig,
+			expectedWorkerNodeConfig:   backOffCloudConfig,
+		},
 	}
 
 	os.Setenv(auth.ClientID, "fooClient")
@@ -138,12 +154,16 @@ func TestGetCloudProviderConfig(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
+			initObjects := []runtime.Object{tc.cluster, tc.azureCluster}
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(initObjects...).Build()
+
 			clusterScope, err := scope.NewClusterScope(context.Background(), scope.ClusterScopeParams{
 				AzureClients: scope.AzureClients{
 					Authorizer: autorest.NullAuthorizer{},
 				},
 				Cluster:      tc.cluster,
 				AzureCluster: tc.azureCluster,
+				Client:       fakeClient,
 			})
 			g.Expect(err).NotTo(HaveOccurred())
 
@@ -155,6 +175,9 @@ func TestGetCloudProviderConfig(t *testing.T) {
 				t.Errorf(diff)
 			}
 			if diff := cmp.Diff(tc.expectedWorkerNodeConfig, string(cloudConfig.Data["worker-node-azure.json"])); diff != "" {
+				t.Errorf(diff)
+			}
+			if diff := cmp.Diff(tc.expectedControlPlaneConfig, string(cloudConfig.Data["azure.json"])); diff != "" {
 				t.Errorf(diff)
 			}
 		})
@@ -171,17 +194,17 @@ func TestReconcileAzureSecret(t *testing.T) {
 	}{
 		"azuremachine should reconcile secret successfully": {
 			kind:       "AzureMachine",
-			apiVersion: "infrastructure.cluster.x-k8s.io/v1alpha3",
+			apiVersion: "infrastructure.cluster.x-k8s.io/v1alpha4",
 			ownerName:  "azureMachineName",
 		},
 		"azuremachinepool should reconcile secret successfully": {
 			kind:       "AzureMachinePool",
-			apiVersion: "exp.infrastructure.cluster.x-k8s.io/v1alpha3",
+			apiVersion: "infrastructure.cluster.x-k8s.io/v1alpha4",
 			ownerName:  "azureMachinePoolName",
 		},
 		"azuremachinetemplate should reconcile secret successfully": {
 			kind:       "AzureMachineTemplate",
-			apiVersion: "infrastructure.cluster.x-k8s.io/v1alpha3",
+			apiVersion: "infrastructure.cluster.x-k8s.io/v1alpha4",
 			ownerName:  "azureMachineTemplateName",
 		},
 	}
@@ -189,15 +212,14 @@ func TestReconcileAzureSecret(t *testing.T) {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 	testLog := ctrl.Log.WithName("reconcileAzureSecret")
 
-	os.Setenv(auth.ClientID, "fooClient")
-	os.Setenv(auth.ClientSecret, "fooSecret")
-	os.Setenv(auth.TenantID, "fooTenant")
-
 	cluster := newCluster("foo")
 	azureCluster := newAzureCluster("foo", "bar")
 
 	cluster.Default()
 	azureCluster.Default()
+
+	scheme := setupScheme(g)
+	kubeclient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	clusterScope, err := scope.NewClusterScope(context.Background(), scope.ClusterScopeParams{
 		AzureClients: scope.AzureClients{
@@ -205,12 +227,9 @@ func TestReconcileAzureSecret(t *testing.T) {
 		},
 		Cluster:      cluster,
 		AzureCluster: azureCluster,
+		Client:       kubeclient,
 	})
 	g.Expect(err).NotTo(HaveOccurred())
-
-	scheme := setupScheme(g)
-
-	kubeclient := fake.NewFakeClientWithScheme(scheme)
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -298,6 +317,40 @@ func newAzureCluster(name, location string) *infrav1.AzureCluster {
 	}
 }
 
+func withRateLimits(ac infrav1.AzureCluster) *infrav1.AzureCluster {
+	cloudProviderRateLimitQPS := resource.MustParse("1.2")
+	rateLimits := []infrav1.RateLimitSpec{
+		{
+			Name: "defaultRateLimit",
+			Config: infrav1.RateLimitConfig{
+				CloudProviderRateLimit:    true,
+				CloudProviderRateLimitQPS: &cloudProviderRateLimitQPS,
+			},
+		},
+		{
+			Name: "loadBalancerRateLimit",
+			Config: infrav1.RateLimitConfig{
+				CloudProviderRateLimitBucket: 10,
+			},
+		},
+	}
+	ac.Spec.CloudProviderConfigOverrides = &infrav1.CloudProviderConfigOverrides{RateLimits: rateLimits}
+	return &ac
+}
+
+func withbackOffConfig(ac infrav1.AzureCluster) *infrav1.AzureCluster {
+	cloudProviderBackOffExponent := resource.MustParse("1.2")
+	backOff := infrav1.BackOffConfig{
+		CloudProviderBackoff:         true,
+		CloudProviderBackoffRetries:  1,
+		CloudProviderBackoffExponent: &cloudProviderBackOffExponent,
+		CloudProviderBackoffDuration: 60,
+		CloudProviderBackoffJitter:   &cloudProviderBackOffExponent,
+	}
+	ac.Spec.CloudProviderConfigOverrides = &infrav1.CloudProviderConfigOverrides{BackOffs: backOff}
+	return &ac
+}
+
 func newAzureClusterWithCustomVnet(name, location string) *infrav1.AzureCluster {
 	return &infrav1.AzureCluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -312,11 +365,11 @@ func newAzureClusterWithCustomVnet(name, location string) *infrav1.AzureCluster 
 					ResourceGroup: "custom-vnet-resource-group",
 				},
 				Subnets: infrav1.Subnets{
-					&infrav1.SubnetSpec{
+					infrav1.SubnetSpec{
 						Name: "foo-controlplane-subnet",
 						Role: infrav1.SubnetControlPlane,
 					},
-					&infrav1.SubnetSpec{
+					infrav1.SubnetSpec{
 						Name: "foo-node-subnet",
 						Role: infrav1.SubnetNode,
 					},
@@ -353,6 +406,8 @@ const (
     "cloud": "AzurePublicCloud",
     "tenantId": "fooTenant",
     "subscriptionId": "baz",
+    "aadClientId": "fooClient",
+    "aadClientSecret": "fooSecret",
     "resourceGroup": "bar",
     "securityGroupName": "foo-node-nsg",
     "securityGroupResourceGroup": "bar",
@@ -401,7 +456,7 @@ const (
     "routeTableName": "foo-node-routetable",
     "loadBalancerSku": "Standard",
     "maximumLoadBalancerRuleCount": 250,
-    "useManagedIdentityExtension": false,
+    "useManagedIdentityExtension": true,
     "useInstanceMetadata": true
 }`
 
@@ -439,8 +494,9 @@ const (
     "routeTableName": "foo-node-routetable",
     "loadBalancerSku": "Standard",
     "maximumLoadBalancerRuleCount": 250,
-    "useManagedIdentityExtension": false,
-    "useInstanceMetadata": true
+    "useManagedIdentityExtension": true,
+    "useInstanceMetadata": true,
+    "userAssignedIdentityId": "foobar"
 }`
 	spCustomVnetControlPlaneCloudConfig = `{
     "cloud": "AzurePublicCloud",
@@ -466,6 +522,8 @@ const (
     "cloud": "AzurePublicCloud",
     "tenantId": "fooTenant",
     "subscriptionId": "baz",
+    "aadClientId": "fooClient",
+    "aadClientSecret": "fooSecret",
     "resourceGroup": "bar",
     "securityGroupName": "foo-node-nsg",
     "securityGroupResourceGroup": "custom-vnet-resource-group",
@@ -479,5 +537,80 @@ const (
     "maximumLoadBalancerRuleCount": 250,
     "useManagedIdentityExtension": false,
     "useInstanceMetadata": true
+}`
+	rateLimitsControlPlaneCloudConfig = `{
+    "cloud": "AzurePublicCloud",
+    "tenantId": "fooTenant",
+    "subscriptionId": "baz",
+    "aadClientId": "fooClient",
+    "aadClientSecret": "fooSecret",
+    "resourceGroup": "bar",
+    "securityGroupName": "foo-node-nsg",
+    "securityGroupResourceGroup": "bar",
+    "location": "bar",
+    "vmType": "vmss",
+    "vnetName": "foo-vnet",
+    "vnetResourceGroup": "bar",
+    "subnetName": "foo-node-subnet",
+    "routeTableName": "foo-node-routetable",
+    "loadBalancerSku": "Standard",
+    "maximumLoadBalancerRuleCount": 250,
+    "useManagedIdentityExtension": false,
+    "useInstanceMetadata": true,
+    "cloudProviderRateLimit": true,
+    "cloudProviderRateLimitQPS": 1.2,
+    "loadBalancerRateLimit": {
+        "cloudProviderRateLimitBucket": 10
+    }
+}`
+	rateLimitsWorkerNodeCloudConfig = `{
+    "cloud": "AzurePublicCloud",
+    "tenantId": "fooTenant",
+    "subscriptionId": "baz",
+    "aadClientId": "fooClient",
+    "aadClientSecret": "fooSecret",
+    "resourceGroup": "bar",
+    "securityGroupName": "foo-node-nsg",
+    "securityGroupResourceGroup": "bar",
+    "location": "bar",
+    "vmType": "vmss",
+    "vnetName": "foo-vnet",
+    "vnetResourceGroup": "bar",
+    "subnetName": "foo-node-subnet",
+    "routeTableName": "foo-node-routetable",
+    "loadBalancerSku": "Standard",
+    "maximumLoadBalancerRuleCount": 250,
+    "useManagedIdentityExtension": false,
+    "useInstanceMetadata": true,
+    "cloudProviderRateLimit": true,
+    "cloudProviderRateLimitQPS": 1.2,
+    "loadBalancerRateLimit": {
+        "cloudProviderRateLimitBucket": 10
+    }
+}`
+	backOffCloudConfig = `{
+    "cloud": "AzurePublicCloud",
+    "tenantId": "fooTenant",
+    "subscriptionId": "baz",
+    "aadClientId": "fooClient",
+    "aadClientSecret": "fooSecret",
+    "resourceGroup": "bar",
+    "securityGroupName": "foo-node-nsg",
+    "securityGroupResourceGroup": "bar",
+    "location": "bar",
+    "vmType": "vmss",
+    "vnetName": "foo-vnet",
+    "vnetResourceGroup": "bar",
+    "subnetName": "foo-node-subnet",
+    "routeTableName": "foo-node-routetable",
+    "loadBalancerSku": "Standard",
+    "maximumLoadBalancerRuleCount": 250,
+    "useManagedIdentityExtension": false,
+    "useInstanceMetadata": true,
+    "cloudProviderBackoff": true,
+    "cloudProviderBackoffRetries": 1,
+    "cloudProviderBackoffExponent": 1.2000000000000002,
+    "cloudProviderBackoffDuration": 60,
+    "cloudProviderBackoffJitter": 1.2000000000000002
 }`
 )

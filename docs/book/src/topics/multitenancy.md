@@ -9,7 +9,7 @@ This is achieved using the [aad-pod-identity](https://azure.github.io/aad-pod-id
 Once a new SP Identity is created in Azure, the corresponding values should be used to create an `AzureClusterIdentity` resource:
 
 ```yaml
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
 kind: AzureClusterIdentity
 metadata:
   name: example-identity
@@ -20,7 +20,8 @@ spec:
   clientID: <client-id-of-SP-identity>
   clientSecret: {"name":"<secret-name-for-client-password>","namespace":"default"}
   allowedNamespaces: 
-  - <cluster-namespace>
+    list:
+    - <cluster-namespace>
 
 ```
 The password will need to be added in a secret similar to the following example:
@@ -49,15 +50,18 @@ data:
 ```
 
 ## allowedNamespaces
-AllowedNamespaces is an array of namespaces that AzureClusters can use this Identity from. CAPZ will not support AzureClusters in namespaces  outside this list. 
-An empty list (default) indicates that AzureCluster can use this AzureClusterIdentity from any namespace. 
+AllowedNamespaces is used to identify the namespaces the clusters are allowed to use the identity from. Namespaces can be selected either using an array of namespaces or with label selector.
+An empty allowedNamespaces object indicates that AzureClusters can use this identity from any namespace.
+If this object is nil, no namespaces will be allowed (default behaviour, if this field is not provided)
+A namespace should be either in the NamespaceList or match with Selector to use the identity.
+Please note NamespaceList will take precedence over Selector if both are set.
 
 ## IdentityRef in AzureCluster
 
 The Identity can be added to an `AzureCluster` by using `IdentityRef` field:
 
 ```yaml
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
 kind: AzureCluster
 metadata:
   name: example-cluster
@@ -70,7 +74,7 @@ spec:
   resourceGroup: example-cluster
   subscriptionID: <AZURE_SUBSCRIPTION_ID>
   identityRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
     kind: AzureClusterIdentity
     name: <name-of-identity>
     namespace: <namespace-of-identity>

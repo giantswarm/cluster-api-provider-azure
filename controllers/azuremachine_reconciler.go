@@ -21,36 +21,36 @@ import (
 
 	"github.com/pkg/errors"
 
-	azure "sigs.k8s.io/cluster-api-provider-azure/cloud"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/scope"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/availabilitysets"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/disks"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/inboundnatrules"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/networkinterfaces"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/publicips"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/resourceskus"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/roleassignments"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/tags"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/virtualmachines"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/services/vmextensions"
+	"sigs.k8s.io/cluster-api-provider-azure/azure"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/scope"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/availabilitysets"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/disks"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/inboundnatrules"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/networkinterfaces"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/publicips"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/resourceskus"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/roleassignments"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/tags"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/virtualmachines"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/vmextensions"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
 )
 
 // azureMachineService is the group of services called by the AzureMachine controller.
 type azureMachineService struct {
-	networkInterfacesSvc azure.Service
-	inboundNatRulesSvc   azure.Service
-	virtualMachinesSvc   azure.Service
-	roleAssignmentsSvc   azure.Service
-	disksSvc             azure.Service
-	publicIPsSvc         azure.Service
-	tagsSvc              azure.Service
-	vmExtensionsSvc      azure.Service
-	availabilitySetsSvc  azure.Service
+	networkInterfacesSvc azure.Reconciler
+	inboundNatRulesSvc   azure.Reconciler
+	virtualMachinesSvc   azure.Reconciler
+	roleAssignmentsSvc   azure.Reconciler
+	disksSvc             azure.Reconciler
+	publicIPsSvc         azure.Reconciler
+	tagsSvc              azure.Reconciler
+	vmExtensionsSvc      azure.Reconciler
+	availabilitySetsSvc  azure.Reconciler
 	skuCache             *resourceskus.Cache
 }
 
-var _ azure.Service = (*azureMachineService)(nil)
+var _ azure.Reconciler = (*azureMachineService)(nil)
 
 // newAzureMachineService populates all the services based on input scope.
 func newAzureMachineService(machineScope *scope.MachineScope) (*azureMachineService, error) {
@@ -73,7 +73,7 @@ func newAzureMachineService(machineScope *scope.MachineScope) (*azureMachineServ
 	}, nil
 }
 
-// Reconcile reconciles all the services in pre determined order
+// Reconcile reconciles all the services in a predetermined order.
 func (s *azureMachineService) Reconcile(ctx context.Context) error {
 	ctx, span := tele.Tracer().Start(ctx, "controllers.azureMachineService.Reconcile")
 	defer span.End()
@@ -113,21 +113,21 @@ func (s *azureMachineService) Reconcile(ctx context.Context) error {
 	return nil
 }
 
-// Delete deletes all the services in pre determined order
+// Delete deletes all the services in a predetermined order.
 func (s *azureMachineService) Delete(ctx context.Context) error {
 	ctx, span := tele.Tracer().Start(ctx, "controllers.azureMachineService.Delete")
 	defer span.End()
 
 	if err := s.virtualMachinesSvc.Delete(ctx); err != nil {
-		return errors.Wrapf(err, "failed to delete machine")
+		return errors.Wrap(err, "failed to delete machine")
 	}
 
 	if err := s.networkInterfacesSvc.Delete(ctx); err != nil {
-		return errors.Wrapf(err, "failed to delete network interface")
+		return errors.Wrap(err, "failed to delete network interface")
 	}
 
 	if err := s.inboundNatRulesSvc.Delete(ctx); err != nil {
-		return errors.Wrapf(err, "failed to delete inbound NAT rule")
+		return errors.Wrap(err, "failed to delete inbound NAT rule")
 	}
 
 	if err := s.publicIPsSvc.Delete(ctx); err != nil {
@@ -139,7 +139,7 @@ func (s *azureMachineService) Delete(ctx context.Context) error {
 	}
 
 	if err := s.availabilitySetsSvc.Delete(ctx); err != nil {
-		return errors.Wrapf(err, "failed to delete availability set")
+		return errors.Wrap(err, "failed to delete availability set")
 	}
 
 	return nil

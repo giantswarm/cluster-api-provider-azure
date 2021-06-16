@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/cluster-api-provider-azure/controllers"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
@@ -54,19 +55,22 @@ var _ = BeforeSuite(func(done Done) {
 		Client:   testEnv,
 		Log:      testEnv.Log,
 		Recorder: testEnv.GetEventRecorderFor("azuremanagedcluster-reconciler"),
-	}).SetupWithManager(testEnv.Manager, controller.Options{MaxConcurrentReconciles: 1})).To(Succeed())
+	}).SetupWithManager(context.Background(), testEnv.Manager, controller.Options{MaxConcurrentReconciles: 1})).To(Succeed())
 
 	Expect((&AzureManagedControlPlaneReconciler{
 		Client:   testEnv,
 		Log:      testEnv.Log,
 		Recorder: testEnv.GetEventRecorderFor("azuremanagedcontrolplane-reconciler"),
-	}).SetupWithManager(testEnv.Manager, controller.Options{MaxConcurrentReconciles: 1})).To(Succeed())
+	}).SetupWithManager(context.Background(), testEnv.Manager, controller.Options{MaxConcurrentReconciles: 1})).To(Succeed())
 
 	Expect(NewAzureManagedMachinePoolReconciler(testEnv, testEnv.Log, testEnv.GetEventRecorderFor("azuremanagedmachinepool-reconciler"),
-		reconciler.DefaultLoopTimeout).SetupWithManager(testEnv.Manager, controller.Options{MaxConcurrentReconciles: 1})).To(Succeed())
+		reconciler.DefaultLoopTimeout, "").SetupWithManager(context.Background(), testEnv.Manager, controller.Options{MaxConcurrentReconciles: 1})).To(Succeed())
 
 	Expect(NewAzureMachinePoolReconciler(testEnv, testEnv.Log, testEnv.GetEventRecorderFor("azuremachinepool-reconciler"),
-		reconciler.DefaultLoopTimeout).SetupWithManager(testEnv.Manager, controller.Options{MaxConcurrentReconciles: 1})).To(Succeed())
+		reconciler.DefaultLoopTimeout, "").SetupWithManager(context.Background(), testEnv.Manager, controllers.Options{Options: controller.Options{MaxConcurrentReconciles: 1}})).To(Succeed())
+
+	Expect(NewAzureMachinePoolMachineController(testEnv, testEnv.Log, testEnv.GetEventRecorderFor("azuremachinepoolmachine-reconciler"),
+		reconciler.DefaultLoopTimeout, "").SetupWithManager(context.Background(), testEnv.Manager, controllers.Options{Options: controller.Options{MaxConcurrentReconciles: 1}})).To(Succeed())
 
 	// +kubebuilder:scaffold:scheme
 

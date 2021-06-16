@@ -1,6 +1,6 @@
 # Failure Domains
 
-The Azure provider includes the support for [failure domains](https://cluster-api.sigs.k8s.io/developer/providers/v1alpha2-to-v1alpha3.html#optional-support-failure-domains) introduced as part of v1alpha3.
+The Azure provider includes the support for [failure domains](https://cluster-api.sigs.k8s.io/developer/providers/v1alpha2-to-v1alpha4.html#optional-support-failure-domains) introduced as part of v1alpha4.
 
 ## Failure domains in Azure
 
@@ -14,10 +14,10 @@ Full details of availability zones, regions can be found in the [Azure docs](htt
 
 ### Default Behaviour
 
-By default, only control plane machines get automatically spread to all cluster zones. A workaround for spreading worker machines is to create N `MachineDelpoyments` for your N failure domains, scaling them independently. Resiliency to failures comes through having multiple `MachineDeployments` (see below).
+By default, only control plane machines get automatically spread to all cluster zones. A workaround for spreading worker machines is to create N `MachineDeployments` for your N failure domains, scaling them independently. Resiliency to failures comes through having multiple `MachineDeployments` (see below).
 
 ```yaml
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1alpha4
 kind: MachineDeployment
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -31,18 +31,18 @@ spec:
     spec:
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
           kind: KubeadmConfigTemplate
           name: ${CLUSTER_NAME}-md-0
       clusterName: ${CLUSTER_NAME}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
         kind: AzureMachineTemplate
         name: ${CLUSTER_NAME}-md-0
       version: ${KUBERNETES_VERSION}
       failureDomain: "1"
 ---
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1alpha4
 kind: MachineDeployment
 metadata:
   name: ${CLUSTER_NAME}-md-1
@@ -56,18 +56,18 @@ spec:
     spec:
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
           kind: KubeadmConfigTemplate
           name: ${CLUSTER_NAME}-md-1
       clusterName: ${CLUSTER_NAME}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
         kind: AzureMachineTemplate
         name: ${CLUSTER_NAME}-md-1
       version: ${KUBERNETES_VERSION}
       failureDomain: "2"
 ---
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1alpha4
 kind: MachineDeployment
 metadata:
   name: ${CLUSTER_NAME}-md-2
@@ -81,12 +81,12 @@ spec:
     spec:
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
           kind: KubeadmConfigTemplate
           name: ${CLUSTER_NAME}-md-2
       clusterName: ${CLUSTER_NAME}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
         kind: AzureMachineTemplate
         name: ${CLUSTER_NAME}-md-2
       version: ${KUBERNETES_VERSION}
@@ -101,12 +101,12 @@ The `AzureMachine` controller looks for a failure domain (i.e. availability zone
 
 If you would rather control the placement of virtual machines into a failure domain (i.e. availability zones) then you can explicitly state the failure domain. The best way is to specify this using the **FailureDomain** field within the `Machine` (or `MachineDeployment`) spec.
 
-> **DEPRECATION NOTE**: Failure domains were introduced in v1alpha3. Prior to this you might have used the **AvailabilityZone** on the `AzureMachine` and this is now deprecated. Please update your definitions and use **FailureDomain** instead.
+> **DEPRECATION NOTE**: Failure domains were introduced in v1alpha3. Prior to this you might have used the **AvailabilityZone** on the `AzureMachine`. This has been deprecated in v1alpha3, and now removed in v1alpha4. Please update your definitions and use **FailureDomain** instead.
 
 For example:
 
 ```yaml
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1alpha4
 kind: Machine
 metadata:
   labels:
@@ -120,14 +120,63 @@ spec:
   failureDomain: "1"
   bootstrap:
     configRef:
-        apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+        apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
         kind: KubeadmConfigTemplate
         name: my-cluster-md-0
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
     kind: AzureMachineTemplate
     name: my-cluster-md-0
 
+```
+
+### Using Virtual Machine Scale Sets
+
+You can use an `AzureMachinePool` object to deploy a Virtual Machine Scale Set which automatically distributes VM instances across the configured availability zones.
+Set the **FailureDomains** field to the list of availability zones that you want to use. Be aware that not all regions have the same availability zones. You can use `az vm list-skus -l <location> --zone -o table` to list all the available zones per vm size in that location/region.
+
+```yaml
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: MachinePool
+metadata:
+  labels:
+    cluster.x-k8s.io/cluster-name: my-cluster
+  name: ${CLUSTER_NAME}-vmss-0
+  namespace: default
+spec:
+  clusterName: my-cluster
+  failureDomains:
+    - "1"
+    - "3"
+  replicas: 3
+  template:
+    spec:
+      clusterName: my-cluster
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: KubeadmConfigTemplate
+          name: ${CLUSTER_NAME}-vmss-0
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        kind: AzureMachinePool
+        name: ${CLUSTER_NAME}-vmss-0
+      version: ${KUBERNETES_VERSION}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: AzureMachinePool
+metadata:
+  labels:
+    cluster.x-k8s.io/cluster-name: my-cluster
+  name: ${CLUSTER_NAME}-vmss-0
+  namespace: default
+spec:
+  location: westeurope
+  template:
+    osDisk:
+      diskSizeGB: 30
+      osType: Linux
+    vmSize: Standard_D2s_v3
 ```
 
 ## Availability sets when there are no failure domains

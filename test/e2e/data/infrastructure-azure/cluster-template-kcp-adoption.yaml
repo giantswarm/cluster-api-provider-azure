@@ -7,7 +7,7 @@
 # 1. kcp-adoption.step1
 ###
 
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1alpha4
 kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -20,11 +20,11 @@ spec:
       cidrBlocks:
       - 192.168.0.0/16
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
     kind: AzureCluster
     name: ${CLUSTER_NAME}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
 kind: AzureCluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -41,7 +41,7 @@ spec:
   resourceGroup: ${CLUSTER_NAME}
   subscriptionID: ${AZURE_SUBSCRIPTION_ID}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
 kind: AzureMachine
 metadata:
   name: ${CLUSTER_NAME}-control-plane-0
@@ -52,7 +52,6 @@ spec:
   - diskSizeGB: 256
     lun: 0
     nameSuffix: etcddisk
-  location: ${AZURE_LOCATION}
   osDisk:
     diskSizeGB: 128
     managedDisk:
@@ -61,7 +60,7 @@ spec:
   sshPublicKey: ${AZURE_SSH_PUBLIC_KEY_B64:=""}
   vmSize: Standard_D2s_v3
 ---
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1alpha4
 kind: Machine
 metadata:
   name: ${CLUSTER_NAME}-control-plane-0
@@ -73,22 +72,21 @@ spec:
   clusterName: ${CLUSTER_NAME}
   bootstrap:
     configRef:
-      apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+      apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
       kind: KubeadmConfig
       name: ${CLUSTER_NAME}-control-plane-0
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
     kind: AzureMachine
     name: ${CLUSTER_NAME}-control-plane-0
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
 kind: KubeadmConfig
 metadata:
   name: ${CLUSTER_NAME}-control-plane-0
   labels:
     kcp-adoption.step1: ''    
 spec:
-  useExperimentalRetryJoin: true
   initConfiguration:
     nodeRegistration:
       kubeletExtraArgs:
@@ -157,7 +155,7 @@ spec:
 ###
 # 2. kcp
 ###
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1alpha4
 kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -170,15 +168,15 @@ spec:
       cidrBlocks:
       - 192.168.0.0/16
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+    apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
     kind: KubeadmControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
     kind: AzureCluster
     name: ${CLUSTER_NAME}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
 kind: KubeadmControlPlane
 metadata:
   name: ${CLUSTER_NAME}-control-plane
@@ -186,10 +184,11 @@ metadata:
     cluster.x-k8s.io/cluster-name: "${ CLUSTER_NAME }"
     kcp-adoption.step2: ""  
 spec:
-  infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
-    kind: AzureMachineTemplate
-    name: ${CLUSTER_NAME}-control-plane
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+      kind: AzureMachineTemplate
+      name: ${CLUSTER_NAME}-control-plane
   kubeadmConfigSpec:
     clusterConfiguration:
       apiServer:
@@ -256,11 +255,10 @@ spec:
     mounts:
     - - LABEL=etcd_disk
       - /var/lib/etcddisk
-    useExperimentalRetryJoin: true
   replicas: ${CONTROL_PLANE_MACHINE_COUNT}
   version: ${KUBERNETES_VERSION}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
 kind: AzureMachineTemplate
 metadata:
   name: ${CLUSTER_NAME}-control-plane
@@ -273,7 +271,6 @@ spec:
       - diskSizeGB: 256
         lun: 0
         nameSuffix: etcddisk
-      location: ${AZURE_LOCATION}
       osDisk:
         diskSizeGB: 128
         managedDisk:
@@ -290,7 +287,7 @@ metadata:
     kcp-adoption.step1: ''
 data: ${CNI_RESOURCES}
 ---
-apiVersion: addons.cluster.x-k8s.io/v1alpha3
+apiVersion: addons.cluster.x-k8s.io/v1alpha4
 kind: ClusterResourceSet
 metadata:
   name:  "${CLUSTER_NAME}-crs-0"

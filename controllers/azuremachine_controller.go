@@ -22,12 +22,12 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -41,31 +41,33 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha3"
-	azure "sigs.k8s.io/cluster-api-provider-azure/cloud"
-	"sigs.k8s.io/cluster-api-provider-azure/cloud/scope"
+	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1alpha4"
+	"sigs.k8s.io/cluster-api-provider-azure/azure"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/scope"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
 )
 
-// AzureMachineReconciler reconciles a AzureMachine object
+// AzureMachineReconciler reconciles an AzureMachine object.
 type AzureMachineReconciler struct {
 	client.Client
 	Log                       logr.Logger
 	Recorder                  record.EventRecorder
 	ReconcileTimeout          time.Duration
+	WatchFilterValue          string
 	createAzureMachineService azureMachineServiceCreator
 }
 
 type azureMachineServiceCreator func(machineScope *scope.MachineScope) (*azureMachineService, error)
 
-// NewAzureMachineReconciler returns a new AzureMachineReconciler instance
-func NewAzureMachineReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration) *AzureMachineReconciler {
+// NewAzureMachineReconciler returns a new AzureMachineReconciler instance.
+func NewAzureMachineReconciler(client client.Client, log logr.Logger, recorder record.EventRecorder, reconcileTimeout time.Duration, watchFilterValue string) *AzureMachineReconciler {
 	amr := &AzureMachineReconciler{
 		Client:           client,
 		Log:              log,
 		Recorder:         recorder,
 		ReconcileTimeout: reconcileTimeout,
+		WatchFilterValue: watchFilterValue,
 	}
 
 	amr.createAzureMachineService = newAzureMachineService
@@ -74,51 +76,45 @@ func NewAzureMachineReconciler(client client.Client, log logr.Logger, recorder r
 }
 
 // SetupWithManager initializes this controller with a manager.
-func (r *AzureMachineReconciler) SetupWithManager(mgr ctrl.Manager, options controller.Options) error {
+func (r *AzureMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	log := r.Log.WithValues("controller", "AzureMachine")
 	// create mapper to transform incoming AzureClusters into AzureMachine requests
-	azureClusterToAzureMachinesMapper, err := AzureClusterToAzureMachinesMapper(r.Client, mgr.GetScheme(), log)
+	azureClusterToAzureMachinesMapper, err := AzureClusterToAzureMachinesMapper(ctx, r.Client, &infrav1.AzureMachineList{}, mgr.GetScheme(), log)
 	if err != nil {
-		return errors.Wrapf(err, "failed to create AzureCluster to AzureMachines mapper")
+		return errors.Wrap(err, "failed to create AzureCluster to AzureMachines mapper")
 	}
 
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		WithOptions(options).
 		For(&infrav1.AzureMachine{}).
-		WithEventFilter(predicates.ResourceNotPaused(log)). // don't queue reconcile if resource is paused
+		WithEventFilter(predicates.ResourceNotPausedAndHasFilterLabel(ctrl.LoggerFrom(ctx), r.WatchFilterValue)).
 		// watch for changes in CAPI Machine resources
 		Watches(
 			&source.Kind{Type: &clusterv1.Machine{}},
-			&handler.EnqueueRequestsFromMapFunc{
-				ToRequests: util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("AzureMachine")),
-			},
+			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("AzureMachine"))),
 		).
 		// watch for changes in AzureCluster
 		Watches(
 			&source.Kind{Type: &infrav1.AzureCluster{}},
-			&handler.EnqueueRequestsFromMapFunc{
-				ToRequests: azureClusterToAzureMachinesMapper,
-			},
+			handler.EnqueueRequestsFromMapFunc(azureClusterToAzureMachinesMapper),
 		).
 		Build(r)
 	if err != nil {
-		return errors.Wrapf(err, "error creating controller")
+		return errors.Wrap(err, "error creating controller")
 	}
 
 	azureMachineMapper, err := util.ClusterToObjectsMapper(r.Client, &infrav1.AzureMachineList{}, mgr.GetScheme())
 	if err != nil {
-		return errors.Wrapf(err, "failed to create mapper for Cluster to AzureMachines")
+		return errors.Wrap(err, "failed to create mapper for Cluster to AzureMachines")
 	}
 
 	// Add a watch on clusterv1.Cluster object for unpause & ready notifications.
 	if err := c.Watch(
 		&source.Kind{Type: &clusterv1.Cluster{}},
-		&handler.EnqueueRequestsFromMapFunc{
-			ToRequests: azureMachineMapper,
-		},
+		handler.EnqueueRequestsFromMapFunc(azureMachineMapper),
 		predicates.ClusterUnpausedAndInfrastructureReady(log),
 	); err != nil {
-		return errors.Wrapf(err, "failed adding a watch for ready clusters")
+		return errors.Wrap(err, "failed adding a watch for ready clusters")
 	}
 
 	return nil
@@ -131,16 +127,16 @@ func (r *AzureMachineReconciler) SetupWithManager(mgr ctrl.Manager, options cont
 // +kubebuilder:rbac:groups="",resources=secrets;,verbs=get;list;watch
 
 // Reconcile idempotently gets, creates, and updates a machine.
-func (r *AzureMachineReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, reterr error) {
-	ctx, cancel := context.WithTimeout(context.Background(), reconciler.DefaultedLoopTimeout(r.ReconcileTimeout))
+func (r *AzureMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reterr error) {
+	ctx, cancel := context.WithTimeout(ctx, reconciler.DefaultedLoopTimeout(r.ReconcileTimeout))
 	defer cancel()
 	logger := r.Log.WithValues("namespace", req.Namespace, "azureMachine", req.Name)
 
 	ctx, span := tele.Tracer().Start(ctx, "controllers.AzureMachineReconciler.Reconcile",
 		trace.WithAttributes(
-			label.String("namespace", req.Namespace),
-			label.String("name", req.Name),
-			label.String("kind", "AzureMachine"),
+			attribute.String("namespace", req.Namespace),
+			attribute.String("name", req.Name),
+			attribute.String("kind", "AzureMachine"),
 		))
 	defer span.End()
 
@@ -268,95 +264,48 @@ func (r *AzureMachineReconciler) reconcileNormal(ctx context.Context, machineSco
 		return reconcile.Result{}, nil
 	}
 
-	if machineScope.AzureMachine.Spec.AvailabilityZone.ID != nil {
-		message := "AvailabilityZone is deprecated, use FailureDomain instead"
-		machineScope.Info(message)
-		r.Recorder.Eventf(clusterScope.AzureCluster, corev1.EventTypeWarning, "DeprecatedField", message)
-
-		// Set FailureDomain if it is not set.
-		if machineScope.AzureMachine.Spec.FailureDomain == nil {
-			machineScope.V(2).Info("Failure domain not set, setting with value from AvailabilityZone.ID")
-			machineScope.AzureMachine.Spec.FailureDomain = machineScope.AzureMachine.Spec.AvailabilityZone.ID
-		}
-	}
-
 	ams, err := r.createAzureMachineService(machineScope)
 	if err != nil {
 		return reconcile.Result{}, errors.Wrap(err, "failed to create azure machine service")
 	}
 
-	err = ams.Reconcile(ctx)
-	if err != nil {
-		return reconcile.Result{}, errors.Wrap(err, "failed to create AzureMachineService")
-	}
-
 	if err := ams.Reconcile(ctx); err != nil {
-
 		// This means that a VM was created and managed by this controller, but is not present anymore.
 		// In this case, we mark it as failed and leave it to MHC for remediation
 		if errors.As(err, &azure.VMDeletedError{}) {
-			r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "VMDeleted", errors.Wrapf(err, "failed to reconcile AzureMachine").Error())
+			r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "VMDeleted", errors.Wrap(err, "failed to reconcile AzureMachine").Error())
 			conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, infrav1.VMProvisionFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			machineScope.SetFailureReason(capierrors.UpdateMachineError)
 			machineScope.SetFailureMessage(err)
 			machineScope.SetNotReady()
-			return reconcile.Result{}, errors.Wrapf(err, "failed to reconcile AzureMachine")
+			return reconcile.Result{}, errors.Wrap(err, "failed to reconcile AzureMachine")
 		}
 
 		// Handle transient and terminal errors
 		var reconcileError azure.ReconcileError
 		if errors.As(err, &reconcileError) {
-			r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "ReconcileError", errors.Wrapf(err, "failed to reconcile AzureMachine").Error())
-			conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, infrav1.VMProvisionFailedReason, clusterv1.ConditionSeverityError, err.Error())
-
 			if reconcileError.IsTerminal() {
+				r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "ReconcileError", errors.Wrapf(err, "failed to reconcile AzureMachine").Error())
 				machineScope.Error(err, "failed to reconcile AzureMachine", "name", machineScope.Name())
+				machineScope.SetFailureReason(capierrors.CreateMachineError)
+				machineScope.SetFailureMessage(err)
+				machineScope.SetNotReady()
+				machineScope.SetVMState(infrav1.Failed)
 				return reconcile.Result{}, nil
 			}
 
 			if reconcileError.IsTransient() {
-				machineScope.Error(err, "failed to reconcile AzureMachine", "name", machineScope.Name())
+				machineScope.Error(err, "transient failure to reconcile AzureMachine, retrying", "name", machineScope.Name())
+				machineScope.SetNotReady()
 				return reconcile.Result{RequeueAfter: reconcileError.RequeueAfter()}, nil
 			}
-
-			return reconcile.Result{}, errors.Wrapf(err, "failed to reconcile AzureMachine")
 		}
-
-		r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "Error creating new AzureMachine", errors.Wrapf(err, "failed to reconcile AzureMachine").Error())
+		r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "ReconcileError", errors.Wrapf(err, "failed to reconcile AzureMachine").Error())
 		conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, infrav1.VMProvisionFailedReason, clusterv1.ConditionSeverityError, err.Error())
-		return reconcile.Result{}, errors.Wrapf(err, "failed to reconcile AzureMachine")
+		return reconcile.Result{}, errors.Wrap(err, "failed to reconcile AzureMachine")
 	}
 
-	switch machineScope.VMState() {
-	case infrav1.VMStateSucceeded:
-		machineScope.V(2).Info("VM is running", "id", machineScope.GetVMID())
-		conditions.MarkTrue(machineScope.AzureMachine, infrav1.VMRunningCondition)
-		machineScope.SetReady()
-	case infrav1.VMStateCreating:
-		machineScope.V(2).Info("VM is creating", "id", machineScope.GetVMID())
-		conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, infrav1.VMNCreatingReason, clusterv1.ConditionSeverityInfo, "")
-		machineScope.SetNotReady()
-	case infrav1.VMStateUpdating:
-		machineScope.V(2).Info("VM is updating", "id", machineScope.GetVMID())
-		conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, infrav1.VMNUpdatingReason, clusterv1.ConditionSeverityInfo, "")
-		machineScope.SetNotReady()
-	case infrav1.VMStateDeleting:
-		machineScope.Info("Unexpected VM deletion", "id", machineScope.GetVMID())
-		r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "UnexpectedVMDeletion", "Unexpected Azure VM deletion")
-		conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, infrav1.VMDDeletingReason, clusterv1.ConditionSeverityWarning, "")
-		machineScope.SetNotReady()
-	case infrav1.VMStateFailed:
-		machineScope.Error(errors.New("Failed to create or update VM"), "VM is in failed state", "id", machineScope.GetVMID())
-		r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "FailedVMState", "Azure VM is in failed state")
-		machineScope.SetFailureReason(capierrors.UpdateMachineError)
-		machineScope.SetFailureMessage(errors.Errorf("Azure VM state is %s", machineScope.VMState()))
-		conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, infrav1.VMProvisionFailedReason, clusterv1.ConditionSeverityWarning, "")
-		machineScope.SetNotReady()
-	default:
-		machineScope.V(2).Info("VM state is undefined", "id", machineScope.GetVMID())
-		conditions.MarkUnknown(machineScope.AzureMachine, infrav1.VMRunningCondition, "", "")
-		machineScope.SetNotReady()
-	}
+	machineScope.SetReady()
 
 	return reconcile.Result{}, nil
 }
@@ -372,25 +321,30 @@ func (r *AzureMachineReconciler) reconcileDelete(ctx context.Context, machineSco
 		return reconcile.Result{}, err
 	}
 
+	defer func() {
+		if reterr == nil {
+			machineScope.Info("Removing finalizer from AzureMachine")
+			controllerutil.RemoveFinalizer(machineScope.AzureMachine, infrav1.MachineFinalizer)
+		}
+	}()
+
 	if ShouldDeleteIndividualResources(ctx, clusterScope) {
 		machineScope.Info("Deleting AzureMachine")
 		ams, err := r.createAzureMachineService(machineScope)
 		if err != nil {
-			return reconcile.Result{}, errors.Wrap(err, "failed to create azure machine service")
+			reterr = errors.Wrap(err, "failed to create azure machine service")
+			return
 		}
 
 		if err := ams.Delete(ctx); err != nil {
 			r.Recorder.Eventf(machineScope.AzureMachine, corev1.EventTypeWarning, "Error deleting AzureMachine", errors.Wrapf(err, "error deleting AzureMachine %s/%s", clusterScope.Namespace(), clusterScope.ClusterName()).Error())
 			conditions.MarkFalse(machineScope.AzureMachine, infrav1.VMRunningCondition, clusterv1.DeletionFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-			return reconcile.Result{}, errors.Wrapf(err, "error deleting AzureMachine %s/%s", clusterScope.Namespace(), clusterScope.ClusterName())
+			reterr = errors.Wrapf(err, "error deleting AzureMachine %s/%s", clusterScope.Namespace(), clusterScope.ClusterName())
+			return
 		}
+	} else {
+		machineScope.Info("Skipping AzureMachine Deletion; will delete whole resource group.")
 	}
-	defer func() {
-		if reterr == nil {
-			// VM is deleted so remove the finalizer.
-			controllerutil.RemoveFinalizer(machineScope.AzureMachine, infrav1.MachineFinalizer)
-		}
-	}()
 
-	return reconcile.Result{}, nil
+	return reconcile.Result{}, reterr
 }
