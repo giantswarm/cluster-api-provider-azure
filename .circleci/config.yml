@@ -25,3 +25,7 @@ workflows:
       - build:
           context:
             - architect
+          # Trigger the job also on git tag.
+          filters:
+            tags:
+              only: /^v.*/
