@@ -338,8 +338,11 @@ docker-pull-prerequisites:
 	docker pull docker.io/library/golang:1.16
 	docker pull gcr.io/distroless/static:latest
 
-DOCKER_IMAGE_TAG ?= $(CIRCLE_TAG)
-DOCKER_IMAGE_TAG ?= $(CIRCLE_SHA1)
+DOCKER_IMAGE_TAG := $(CIRCLE_TAG)
+ifeq ($(DOCKER_IMAGE_TAG),)
+DOCKER_IMAGE_TAG := $(CIRCLE_SHA1)
+endif
+export DOCKER_IMAGE_TAG
 
 .PHONY: docker-build
 docker-build: docker-pull-prerequisites ## Build the docker image for controller-manager
