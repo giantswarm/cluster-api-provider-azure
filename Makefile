@@ -338,6 +338,7 @@ docker-pull-prerequisites:
 	docker pull docker.io/library/golang:1.16
 	docker pull gcr.io/distroless/static:latest
 
+# Determine the docker image tag. Try using the tag first or fallback to the commit SHA.
 DOCKER_IMAGE_TAG := $(CIRCLE_TAG)
 ifeq ($(DOCKER_IMAGE_TAG),)
 DOCKER_IMAGE_TAG := $(CIRCLE_SHA1)
