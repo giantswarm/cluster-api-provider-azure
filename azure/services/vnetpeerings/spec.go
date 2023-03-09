@@ -22,17 +22,22 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
 	"github.com/pkg/errors"
 	"k8s.io/utils/pointer"
+
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 )
 
 // VnetPeeringSpec defines the specification for a virtual network peering.
 type VnetPeeringSpec struct {
-	SourceResourceGroup string
-	SourceVnetName      string
-	RemoteResourceGroup string
-	RemoteVnetName      string
-	PeeringName         string
-	SubscriptionID      string
+	SourceResourceGroup       string
+	SourceVnetName            string
+	RemoteResourceGroup       string
+	RemoteVnetName            string
+	PeeringName               string
+	SubscriptionID            string
+	AllowForwardedTraffic     *bool
+	AllowGatewayTransit       *bool
+	AllowVirtualNetworkAccess *bool
+	UseRemoteGateways         *bool
 }
 
 // ResourceName returns the name of the virtual network peering.

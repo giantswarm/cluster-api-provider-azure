@@ -29,6 +29,11 @@ import (
 	"github.com/pkg/errors"
 	"k8s.io/utils/net"
 	"k8s.io/utils/pointer"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/bastionhosts"
@@ -45,10 +50,6 @@ import (
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/vnetpeerings"
 	"sigs.k8s.io/cluster-api-provider-azure/util/futures"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ClusterScopeParams defines the input parameters used to create a new Scope.
@@ -425,20 +426,28 @@ func (s *ClusterScope) VnetPeeringSpecs() []azure.ResourceSpecGetter {
 	peeringSpecs := make([]azure.ResourceSpecGetter, 2*len(s.Vnet().Peerings))
 	for i, peering := range s.Vnet().Peerings {
 		forwardPeering := &vnetpeerings.VnetPeeringSpec{
-			PeeringName:         azure.GenerateVnetPeeringName(s.Vnet().Name, peering.RemoteVnetName),
-			SourceVnetName:      s.Vnet().Name,
-			SourceResourceGroup: s.Vnet().ResourceGroup,
-			RemoteVnetName:      peering.RemoteVnetName,
-			RemoteResourceGroup: peering.ResourceGroup,
-			SubscriptionID:      s.SubscriptionID(),
+			PeeringName:               azure.GenerateVnetPeeringName(s.Vnet().Name, peering.RemoteVnetName),
+			SourceVnetName:            s.Vnet().Name,
+			SourceResourceGroup:       s.Vnet().ResourceGroup,
+			RemoteVnetName:            peering.RemoteVnetName,
+			RemoteResourceGroup:       peering.ResourceGroup,
+			SubscriptionID:            s.SubscriptionID(),
+			AllowForwardedTraffic:     peering.ForwardPeeringOptions.AllowForwardedTraffic,
+			AllowGatewayTransit:       peering.ForwardPeeringOptions.AllowGatewayTransit,
+			AllowVirtualNetworkAccess: peering.ForwardPeeringOptions.AllowVirtualNetworkAccess,
+			UseRemoteGateways:         peering.ForwardPeeringOptions.UseRemoteGateways,
 		}
 		reversePeering := &vnetpeerings.VnetPeeringSpec{
-			PeeringName:         azure.GenerateVnetPeeringName(peering.RemoteVnetName, s.Vnet().Name),
-			SourceVnetName:      peering.RemoteVnetName,
-			SourceResourceGroup: peering.ResourceGroup,
-			RemoteVnetName:      s.Vnet().Name,
-			RemoteResourceGroup: s.Vnet().ResourceGroup,
-			SubscriptionID:      s.SubscriptionID(),
+			PeeringName:               azure.GenerateVnetPeeringName(peering.RemoteVnetName, s.Vnet().Name),
+			SourceVnetName:            peering.RemoteVnetName,
+			SourceResourceGroup:       peering.ResourceGroup,
+			RemoteVnetName:            s.Vnet().Name,
+			RemoteResourceGroup:       s.Vnet().ResourceGroup,
+			SubscriptionID:            s.SubscriptionID(),
+			AllowForwardedTraffic:     peering.ReversePeeringOptions.AllowForwardedTraffic,
+			AllowGatewayTransit:       peering.ReversePeeringOptions.AllowGatewayTransit,
+			AllowVirtualNetworkAccess: peering.ReversePeeringOptions.AllowVirtualNetworkAccess,
+			UseRemoteGateways:         peering.ReversePeeringOptions.UseRemoteGateways,
 		}
 		peeringSpecs[i*2] = forwardPeering
 		peeringSpecs[i*2+1] = reversePeering

@@ -124,6 +124,26 @@ type VnetPeeringClassSpec struct {
 
 	// RemoteVnetName defines name of the remote virtual network.
 	RemoteVnetName string `json:"remoteVnetName"`
+
+	// +optional
+	ForwardPeeringOptions VnetPeeringOptions `json:"forwardPeeringOptions,omitempty"`
+
+	// +optional
+	ReversePeeringOptions VnetPeeringOptions `json:"reversePeeringOptions,omitempty"`
+}
+
+type VnetPeeringOptions struct {
+	// +optional
+	AllowForwardedTraffic *bool `json:"allowForwardedTraffic,omitempty"`
+
+	// +optional
+	AllowGatewayTransit *bool `json:"allowGatewayTransit,omitempty"`
+
+	// +optional
+	AllowVirtualNetworkAccess *bool `json:"allowVirtualNetworkAccess,omitempty"`
+
+	// +optional
+	UseRemoteGateways *bool `json:"useRemoteGateways,omitempty"`
 }
 
 // VnetPeerings is a slice of VnetPeering.
