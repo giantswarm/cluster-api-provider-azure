@@ -19,7 +19,7 @@ jobs:
           export REGISTRY=quay.io/giantswarm
           export IMAGE_NAME=cluster-api-azure-controller
           export ARCH=amd64
-          export TAG="$CIRCLE_SHA1"
+          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
           
           # Build container image with upstream make docker-build
           make docker-build
@@ -33,7 +33,7 @@ jobs:
           export REGISTRY=quay.io/giantswarm
           export IMAGE_NAME=cluster-api-azure-controller
           export ARCH=amd64
-          export TAG="$CIRCLE_SHA1"
+          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
           
           # tag and push
           docker tag $REGISTRY/$IMAGE_NAME-$ARCH:$TAG $REGISTRY/$IMAGE_NAME:$TAG
@@ -49,7 +49,7 @@ jobs:
           export DOCKER_REGISTRY=docker.io/giantswarm
           export IMAGE_NAME=cluster-api-azure-controller
           export ARCH=amd64
-          export TAG="$CIRCLE_SHA1"
+          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
           
           # tag and push
           docker tag $REGISTRY/$IMAGE_NAME-$ARCH:$TAG $DOCKER_REGISTRY/$IMAGE_NAME:$TAG
