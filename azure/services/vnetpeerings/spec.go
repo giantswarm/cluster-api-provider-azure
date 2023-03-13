@@ -69,6 +69,10 @@ func (s *VnetPeeringSpec) Parameters(ctx context.Context, existing interface{}) 
 		RemoteVirtualNetwork: &network.SubResource{
 			ID: pointer.String(vnetID),
 		},
+		AllowForwardedTraffic:     s.AllowForwardedTraffic,
+		AllowGatewayTransit:       s.AllowGatewayTransit,
+		AllowVirtualNetworkAccess: s.AllowVirtualNetworkAccess,
+		UseRemoteGateways:         s.UseRemoteGateways,
 	}
 	return network.VirtualNetworkPeering{
 		Name:                                  pointer.String(s.PeeringName),
