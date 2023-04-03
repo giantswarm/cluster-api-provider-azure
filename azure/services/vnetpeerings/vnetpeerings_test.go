@@ -23,9 +23,9 @@ import (
 	"testing"
 
 	"github.com/Azure/go-autorest/autorest"
-	"github.com/Azure/go-autorest/autorest/to"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/gomega"
+	"k8s.io/utils/pointer"
 
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
@@ -74,10 +74,10 @@ var (
 		RemoteVnetName:            "spoke-vnet",
 		RemoteResourceGroup:       "spoke-group",
 		SubscriptionID:            "sub1",
-		AllowForwardedTraffic:     to.BoolPtr(true),
-		AllowGatewayTransit:       to.BoolPtr(true),
-		AllowVirtualNetworkAccess: to.BoolPtr(true),
-		UseRemoteGateways:         to.BoolPtr(false),
+		AllowForwardedTraffic:     pointer.Bool(true),
+		AllowGatewayTransit:       pointer.Bool(true),
+		AllowVirtualNetworkAccess: pointer.Bool(true),
+		UseRemoteGateways:         pointer.Bool(false),
 	}
 	fakePeeringSpokeToHub = VnetPeeringSpec{
 		PeeringName:               "spoke-to-hub",
@@ -86,10 +86,10 @@ var (
 		RemoteVnetName:            "hub-vnet",
 		RemoteResourceGroup:       "hub-group",
 		SubscriptionID:            "sub1",
-		AllowForwardedTraffic:     to.BoolPtr(true),
-		AllowGatewayTransit:       to.BoolPtr(false),
-		AllowVirtualNetworkAccess: to.BoolPtr(true),
-		UseRemoteGateways:         to.BoolPtr(true),
+		AllowForwardedTraffic:     pointer.Bool(true),
+		AllowGatewayTransit:       pointer.Bool(false),
+		AllowVirtualNetworkAccess: pointer.Bool(true),
+		UseRemoteGateways:         pointer.Bool(true),
 	}
 	fakePeeringExtra = VnetPeeringSpec{
 		PeeringName:         "extra-peering",
