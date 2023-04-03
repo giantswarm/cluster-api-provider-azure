@@ -25,6 +25,8 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/gomega"
+	"k8s.io/utils/pointer"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/async/mock_async"
@@ -65,6 +67,30 @@ var (
 		RemoteResourceGroup: "group1",
 		SubscriptionID:      "sub1",
 	}
+	fakePeeringHubToSpoke = VnetPeeringSpec{
+		PeeringName:               "hub-to-spoke",
+		SourceVnetName:            "hub-vnet",
+		SourceResourceGroup:       "hub-group",
+		RemoteVnetName:            "spoke-vnet",
+		RemoteResourceGroup:       "spoke-group",
+		SubscriptionID:            "sub1",
+		AllowForwardedTraffic:     pointer.Bool(true),
+		AllowGatewayTransit:       pointer.Bool(true),
+		AllowVirtualNetworkAccess: pointer.Bool(true),
+		UseRemoteGateways:         pointer.Bool(false),
+	}
+	fakePeeringSpokeToHub = VnetPeeringSpec{
+		PeeringName:               "spoke-to-hub",
+		SourceVnetName:            "spoke-vnet",
+		SourceResourceGroup:       "spoke-group",
+		RemoteVnetName:            "hub-vnet",
+		RemoteResourceGroup:       "hub-group",
+		SubscriptionID:            "sub1",
+		AllowForwardedTraffic:     pointer.Bool(true),
+		AllowGatewayTransit:       pointer.Bool(false),
+		AllowVirtualNetworkAccess: pointer.Bool(true),
+		UseRemoteGateways:         pointer.Bool(true),
+	}
 	fakePeeringExtra = VnetPeeringSpec{
 		PeeringName:         "extra-peering",
 		SourceVnetName:      "vnet3",
@@ -73,7 +99,7 @@ var (
 		RemoteResourceGroup: "group4",
 		SubscriptionID:      "sub1",
 	}
-	fakePeeringSpecs      = []azure.ResourceSpecGetter{&fakePeering1To2, &fakePeering2To1, &fakePeering1To3, &fakePeering3To1}
+	fakePeeringSpecs      = []azure.ResourceSpecGetter{&fakePeering1To2, &fakePeering2To1, &fakePeering1To3, &fakePeering3To1, &fakePeeringHubToSpoke, &fakePeeringSpokeToHub}
 	fakePeeringExtraSpecs = []azure.ResourceSpecGetter{&fakePeering1To2, &fakePeering2To1, &fakePeeringExtra}
 	internalError         = autorest.NewErrorWithResponse("", "", &http.Response{StatusCode: http.StatusInternalServerError}, "Internal Server Error")
 	notDoneError          = azure.NewOperationNotDoneError(&infrav1.Future{})
@@ -131,6 +157,8 @@ func TestReconcileVnetPeerings(t *testing.T) {
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(&fakePeering2To1, nil)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(&fakePeering1To3, nil)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(&fakePeering3To1, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(&fakePeeringHubToSpoke, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(&fakePeeringSpokeToHub, nil)
 				p.UpdatePutStatus(infrav1.VnetPeeringReadyCondition, ServiceName, nil)
 			},
 		},
@@ -143,18 +171,8 @@ func TestReconcileVnetPeerings(t *testing.T) {
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(&fakePeering2To1, nil)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(nil, internalError)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(&fakePeering3To1, nil)
-				p.UpdatePutStatus(infrav1.VnetPeeringReadyCondition, ServiceName, internalError)
-			},
-		},
-		{
-			name:          "error in creating peering",
-			expectedError: "#: Internal Server Error: StatusCode=500",
-			expect: func(p *mock_vnetpeerings.MockVnetPeeringScopeMockRecorder, r *mock_async.MockReconcilerMockRecorder) {
-				p.VnetPeeringSpecs().Return(fakePeeringSpecs)
-				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering1To2, ServiceName).Return(&fakePeering1To2, nil)
-				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(&fakePeering2To1, nil)
-				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(nil, internalError)
-				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(&fakePeering3To1, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(&fakePeeringHubToSpoke, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(&fakePeeringSpokeToHub, nil)
 				p.UpdatePutStatus(infrav1.VnetPeeringReadyCondition, ServiceName, internalError)
 			},
 		},
@@ -167,6 +185,8 @@ func TestReconcileVnetPeerings(t *testing.T) {
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(nil, internalError)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(nil, notDoneError)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(&fakePeering3To1, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(&fakePeeringHubToSpoke, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(&fakePeeringSpokeToHub, nil)
 				p.UpdatePutStatus(infrav1.VnetPeeringReadyCondition, ServiceName, internalError)
 			},
 		},
@@ -179,6 +199,8 @@ func TestReconcileVnetPeerings(t *testing.T) {
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(&fakePeering2To1, nil)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(nil, notDoneError)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(nil, internalError)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(&fakePeeringHubToSpoke, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(&fakePeeringSpokeToHub, nil)
 				p.UpdatePutStatus(infrav1.VnetPeeringReadyCondition, ServiceName, internalError)
 			},
 		},
@@ -191,6 +213,8 @@ func TestReconcileVnetPeerings(t *testing.T) {
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(&fakePeering2To1, nil)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(nil, notDoneError)
 				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(&fakePeering3To1, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(&fakePeeringHubToSpoke, nil)
+				r.CreateOrUpdateResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(&fakePeeringSpokeToHub, nil)
 				p.UpdatePutStatus(infrav1.VnetPeeringReadyCondition, ServiceName, notDoneError)
 			},
 		},
@@ -277,6 +301,8 @@ func TestDeleteVnetPeerings(t *testing.T) {
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(nil)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(nil)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(nil)
 				p.UpdateDeleteStatus(infrav1.VnetPeeringReadyCondition, ServiceName, nil)
 			},
 		},
@@ -289,6 +315,8 @@ func TestDeleteVnetPeerings(t *testing.T) {
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(nil)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(internalError)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(nil)
 				p.UpdateDeleteStatus(infrav1.VnetPeeringReadyCondition, ServiceName, internalError)
 			},
 		},
@@ -301,6 +329,8 @@ func TestDeleteVnetPeerings(t *testing.T) {
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(internalError)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(notDoneError)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(nil)
 				p.UpdateDeleteStatus(infrav1.VnetPeeringReadyCondition, ServiceName, internalError)
 			},
 		},
@@ -313,6 +343,8 @@ func TestDeleteVnetPeerings(t *testing.T) {
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(nil)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(notDoneError)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(internalError)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(nil)
 				p.UpdateDeleteStatus(infrav1.VnetPeeringReadyCondition, ServiceName, internalError)
 			},
 		},
@@ -325,6 +357,8 @@ func TestDeleteVnetPeerings(t *testing.T) {
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering2To1, ServiceName).Return(nil)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering1To3, ServiceName).Return(notDoneError)
 				r.DeleteResource(gomockinternal.AContext(), &fakePeering3To1, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringHubToSpoke, ServiceName).Return(nil)
+				r.DeleteResource(gomockinternal.AContext(), &fakePeeringSpokeToHub, ServiceName).Return(nil)
 				p.UpdateDeleteStatus(infrav1.VnetPeeringReadyCondition, ServiceName, notDoneError)
 			},
 		},
