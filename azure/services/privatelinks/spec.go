@@ -22,7 +22,7 @@ type PrivateLinkSpec struct {
 	VNet                      string
 	NATIPConfiguration        []NATIPConfiguration
 	LoadBalancerName          string
-	FrontendIPConfigNames     []string
+	LBFrontendIPConfigNames   []string
 	AllowedSubscriptions      []string
 	AutoApprovedSubscriptions []string
 	EnableProxyProtocol       *bool
@@ -61,7 +61,7 @@ func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) 
 	if len(s.NATIPConfiguration) == 0 {
 		return nil, errors.Errorf("At least one private link NAT IP configuration must be specified")
 	}
-	if len(s.FrontendIPConfigNames) == 0 {
+	if len(s.LBFrontendIPConfigNames) == 0 {
 		return nil, errors.Errorf("At least one load balancer front end name must be specified")
 	}
 
@@ -100,7 +100,7 @@ func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) 
 
 	// Load balancer front-end IP configurations
 	var frontendIPConfigurations []network.FrontendIPConfiguration
-	for _, frontendIPConfigName := range s.FrontendIPConfigNames {
+	for _, frontendIPConfigName := range s.LBFrontendIPConfigNames {
 		frontendIPConfig := network.FrontendIPConfiguration{
 			ID: pointer.String(
 				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/loadBalancers/%s/frontendIPConfigurations/%s",
