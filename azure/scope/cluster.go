@@ -1125,11 +1125,11 @@ func (s *ClusterScope) PrivateLinkSpecs() []azure.ResourceSpecGetter {
 			ClusterName:               s.ClusterName(),
 			AdditionalTags:            s.AdditionalTags(),
 		}
-
 		// Set NAT IP configuration
 		for _, natIpConfiguration := range privateLink.NATIPConfigurations {
 			privateLinkSpec.NATIPConfiguration = append(privateLinkSpec.NATIPConfiguration, privatelinks.NATIPConfiguration(natIpConfiguration))
 		}
+		privateLinksSpecs = append(privateLinksSpecs, &privateLinkSpec)
 	}
 
 	return privateLinksSpecs
