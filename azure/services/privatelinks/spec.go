@@ -96,6 +96,7 @@ func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) 
 			},
 		}
 		ipConfigurations = append(ipConfigurations, ipConfiguration)
+		ipConfigurations[0].Primary = pointer.Bool(true)
 	}
 
 	// Load balancer front-end IP configurations
