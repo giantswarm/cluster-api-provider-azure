@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2021-08-01/network"
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-07-01/network"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/pkg/errors"
@@ -69,11 +69,11 @@ func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) 
 	var ipConfigurations []network.PrivateLinkServiceIPConfiguration
 	for _, natIPConfiguration := range s.NATIPConfiguration {
 		ipAllocationMethod := network.IPAllocationMethod(natIPConfiguration.AllocationMethod)
-		if ipAllocationMethod != network.IPAllocationMethodDynamic && ipAllocationMethod != network.IPAllocationMethodStatic {
+		if ipAllocationMethod != network.Dynamic && ipAllocationMethod != network.Static {
 			return nil, errors.Errorf("%T is not a supported network.IPAllocationMethodStatic", natIPConfiguration.AllocationMethod)
 		}
 		var privateIpAddress *string
-		if ipAllocationMethod == network.IPAllocationMethodStatic {
+		if ipAllocationMethod == network.Static {
 			if natIPConfiguration.PrivateIPAddress != "" {
 				privateIpAddress = pointer.String(natIPConfiguration.PrivateIPAddress)
 			} else {
