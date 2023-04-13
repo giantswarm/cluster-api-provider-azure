@@ -100,17 +100,18 @@ func (s *SubnetSpec) Parameters(ctx context.Context, existing interface{}) (para
 	subnetProperties := network.SubnetPropertiesFormat{
 		AddressPrefixes: &s.CIDRs,
 	}
+
+	if len(s.CIDRs) == 1 {
+		subnetProperties = network.SubnetPropertiesFormat{
+			// workaround needed to avoid SubscriptionNotRegisteredForFeature for feature Microsoft.Network/AllowMultipleAddressPrefixesOnSubnet.
+			AddressPrefix: &s.CIDRs[0],
+		}
+	}
+
 	if s.UsedForPrivateLinkNATIP {
 		// Disable PrivateLinkServiceNetworkPolicies only if the subnet is used for private link NAT IP in the
 		// AzureCluster spec, otherwise do not set any value here so the existing settings is not affected.
 		subnetProperties.PrivateLinkServiceNetworkPolicies = network.VirtualNetworkPrivateLinkServiceNetworkPoliciesDisabled
-	}
-
-	// workaround needed to avoid SubscriptionNotRegisteredForFeature for feature Microsoft.Network/AllowMultipleAddressPrefixesOnSubnet.
-	if len(s.CIDRs) == 1 {
-		subnetProperties = network.SubnetPropertiesFormat{
-			AddressPrefix: &s.CIDRs[0],
-		}
 	}
 
 	if s.RouteTableName != "" {
