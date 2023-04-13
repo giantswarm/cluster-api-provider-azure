@@ -67,7 +67,7 @@ func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) 
 
 	// NAT IP configurations
 	var ipConfigurations []network.PrivateLinkServiceIPConfiguration
-	for _, natIPConfiguration := range s.NATIPConfiguration {
+	for i, natIPConfiguration := range s.NATIPConfiguration {
 		ipAllocationMethod := network.IPAllocationMethod(natIPConfiguration.AllocationMethod)
 		if ipAllocationMethod != network.Dynamic && ipAllocationMethod != network.Static {
 			return nil, errors.Errorf("%T is not a supported network.IPAllocationMethodStatic", natIPConfiguration.AllocationMethod)
@@ -81,6 +81,7 @@ func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) 
 			}
 		}
 		ipConfiguration := network.PrivateLinkServiceIPConfiguration{
+			Name: pointer.String(fmt.Sprintf("%s-natipconfig-%d", natIPConfiguration.Subnet, i+1)),
 			PrivateLinkServiceIPConfigurationProperties: &network.PrivateLinkServiceIPConfigurationProperties{
 				Subnet: &network.Subnet{
 					ID: pointer.String(
