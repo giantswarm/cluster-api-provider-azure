@@ -23,24 +23,26 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	"k8s.io/utils/pointer"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 )
 
 // SubnetSpec defines the specification for a Subnet.
 type SubnetSpec struct {
-	Name              string
-	ResourceGroup     string
-	SubscriptionID    string
-	CIDRs             []string
-	VNetName          string
-	VNetResourceGroup string
-	IsVNetManaged     bool
-	RouteTableName    string
-	SecurityGroupName string
-	Role              infrav1.SubnetRole
-	NatGatewayName    string
-	ServiceEndpoints  infrav1.ServiceEndpoints
+	Name                    string
+	ResourceGroup           string
+	SubscriptionID          string
+	CIDRs                   []string
+	VNetName                string
+	VNetResourceGroup       string
+	IsVNetManaged           bool
+	RouteTableName          string
+	SecurityGroupName       string
+	Role                    infrav1.SubnetRole
+	NatGatewayName          string
+	ServiceEndpoints        infrav1.ServiceEndpoints
+	UsedForPrivateLinkNATIP bool
 }
 
 // ResourceName returns the name of the subnet.
@@ -97,6 +99,11 @@ func (s *SubnetSpec) Parameters(ctx context.Context, existing interface{}) (para
 	}
 	subnetProperties := network.SubnetPropertiesFormat{
 		AddressPrefixes: &s.CIDRs,
+	}
+	if s.UsedForPrivateLinkNATIP {
+		// Disable PrivateLinkServiceNetworkPolicies only if the subnet is used for private link NAT IP in the
+		// AzureCluster spec, otherwise do not set any value here so the existing settings is not affected.
+		subnetProperties.PrivateLinkServiceNetworkPolicies = network.VirtualNetworkPrivateLinkServiceNetworkPoliciesDisabled
 	}
 
 	// workaround needed to avoid SubscriptionNotRegisteredForFeature for feature Microsoft.Network/AllowMultipleAddressPrefixesOnSubnet.

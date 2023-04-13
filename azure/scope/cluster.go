@@ -389,6 +389,14 @@ func (s *ClusterScope) SubnetSpecs() []azure.ResourceSpecGetter {
 			NatGatewayName:    subnet.NatGateway.Name,
 			ServiceEndpoints:  subnet.ServiceEndpoints,
 		}
+		// Check if subnet is used for the private link NAT IP
+		for _, privateLink := range s.AzureCluster.Spec.NetworkSpec.APIServerLB.PrivateLinks {
+			for _, ipConfig := range privateLink.NATIPConfigurations {
+				if ipConfig.Subnet == subnetSpec.Name {
+					subnetSpec.UsedForPrivateLinkNATIP = true
+				}
+			}
+		}
 		subnetSpecs = append(subnetSpecs, subnetSpec)
 	}
 
