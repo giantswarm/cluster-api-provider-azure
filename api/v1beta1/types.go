@@ -132,6 +132,7 @@ type VnetPeeringClassSpec struct {
 	ReversePeeringProperties VnetPeeringProperties `json:"reversePeeringProperties,omitempty"`
 }
 
+// VnetPeeringProperties specifies the virtual network peering properties.
 type VnetPeeringProperties struct {
 	// +optional
 	AllowForwardedTraffic *bool `json:"allowForwardedTraffic,omitempty"`
