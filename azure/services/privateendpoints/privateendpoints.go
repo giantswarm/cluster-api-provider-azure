@@ -19,8 +19,12 @@ package privateendpoints
 import (
 	"context"
 
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-05-01/network"
+	"github.com/pkg/errors"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/converters"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/async"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
@@ -33,12 +37,15 @@ const ServiceName = "privateendpoints"
 type PrivateEndpointScope interface {
 	azure.Authorizer
 	azure.AsyncStatusUpdater
+	ClusterName() string
+	ResourceGroup() string
 	PrivateEndpointSpecs() []azure.ResourceSpecGetter
 }
 
 // Service provides operations on Azure resources.
 type Service struct {
-	Scope PrivateEndpointScope
+	client *azureClient
+	Scope  PrivateEndpointScope
 	async.Reconciler
 }
 
@@ -46,6 +53,7 @@ type Service struct {
 func New(scope PrivateEndpointScope) *Service {
 	Client := newClient(scope)
 	return &Service{
+		client:     Client,
 		Scope:      scope,
 		Reconciler: async.New(scope, Client, Client),
 	}
@@ -78,6 +86,53 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.CreateOrUpdateResource(ctx, privateEndpointSpec, ServiceName); err != nil {
+			if !azure.IsOperationNotDoneError(err) || result == nil {
+				result = err
+			}
+		}
+	}
+
+	// Delete all private endpoints that got deleted from AzureCluster.
+	// We list all private endpoints in the resource group, the check which are owned by CAPZ, and we
+	// delete those private endpoints that are owned by CAPZ, but that are not found in AzureCluster
+	// (assuming they were in the AzureCluster, but then they were deleted).
+	existingPrivateEndpoints, err := s.client.List(ctx, s.Scope.ResourceGroup())
+	if err != nil {
+		return err
+	}
+
+	for _, existingPrivateEndpointObj := range existingPrivateEndpoints {
+		existingPrivateEndpoint, ok := existingPrivateEndpointObj.(network.PrivateEndpoint)
+		if !ok {
+			return errors.Errorf("%T is not a network.PrivateEndpoint", existingPrivateEndpointObj)
+		}
+		if existingPrivateEndpoint.Name == nil {
+			return errors.Errorf("got private endpoint object without name")
+		}
+
+		wanted := false
+		for _, spec := range s.Scope.PrivateEndpointSpecs() {
+			if spec.ResourceName() == *existingPrivateEndpoint.Name {
+				// existing private endpoint found in specs, meaning we want it
+				wanted = true
+				break
+			}
+		}
+		if wanted {
+			continue
+		}
+		// Existing private endpoint is not found in specs. There are two cases now:
+		// 1. if the private endpoint is created and owned by CAPZ, delete it
+		// 2. if the private endpoint is NOT created and owned by CAPZ, ignore it
+		privateEndpointIsOwned := converters.
+			MapToTags(existingPrivateEndpoint.Tags).
+			HasOwned(s.Scope.ClusterName())
+		if privateEndpointIsOwned {
+			spec := PrivateEndpointSpec{
+				Name:          *existingPrivateEndpoint.Name,
+				ResourceGroup: s.Scope.ResourceGroup(),
+			}
+			result = s.DeleteResource(ctx, &spec, ServiceName)
 			if !azure.IsOperationNotDoneError(err) || result == nil {
 				result = err
 			}

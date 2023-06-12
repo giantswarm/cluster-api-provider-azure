@@ -24,6 +24,7 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	azureautorest "github.com/Azure/go-autorest/autorest/azure"
 	"github.com/pkg/errors"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
@@ -53,6 +54,28 @@ func (ac *azureClient) Get(ctx context.Context, spec azure.ResourceSpecGetter) (
 	ctx, span := tele.Tracer().Start(ctx, "privateendpoints.AzureClient.Get")
 	defer span.End()
 	return ac.privateendpoints.Get(ctx, spec.OwnerResourceName(), spec.ResourceName(), "")
+}
+
+func (ac *azureClient) List(ctx context.Context, ownerResourceName string) (result []interface{}, err error) {
+	ctx, span := tele.Tracer().Start(ctx, "privateendpoints.AzureClient.List")
+	defer span.End()
+
+	listResult, err := ac.privateendpoints.List(ctx, ownerResourceName)
+	if err != nil {
+		return nil, errors.Errorf("an error occurred when listing private endpoints in resource group %s", ownerResourceName)
+	}
+
+	var nextErr error
+	for ; listResult.NotDone(); nextErr = listResult.NextWithContext(ctx) {
+		if nextErr != nil {
+			return nil, errors.Errorf("an error occurred when getting the next private endpoints from list result")
+		}
+
+		for _, privateEndpoint := range listResult.Values() {
+			result = append(result, privateEndpoint)
+		}
+	}
+	return result, err
 }
 
 // CreateOrUpdateAsync creates a private endpoint.
