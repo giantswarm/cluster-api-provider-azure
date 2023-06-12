@@ -73,7 +73,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	defer cancel()
 
 	specs := s.Scope.PrivateEndpointSpecs()
-	
+
 	// We go through the list of PrivateEndpointSpecs to reconcile each one, independently of the result of the previous one.
 	// If multiple errors occur, we return the most pressing one.
 	//  Order of precedence (highest -> lowest) is: error that is not an operationNotDoneError (i.e. error creating) -> operationNotDoneError (i.e. creating in progress) -> no error (i.e. created)
