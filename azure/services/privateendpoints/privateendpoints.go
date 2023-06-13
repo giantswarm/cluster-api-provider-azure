@@ -66,7 +66,7 @@ func (s *Service) Name() string {
 
 // Reconcile idempotently creates or updates a private endpoint.
 func (s *Service) Reconcile(ctx context.Context) error {
-	ctx, logger, done := tele.StartSpanWithLogger(ctx, "privateendpoints.Service.Reconcile")
+	ctx, _, done := tele.StartSpanWithLogger(ctx, "privateendpoints.Service.Reconcile")
 	defer done()
 
 	ctx, cancel := context.WithTimeout(ctx, reconciler.DefaultAzureServiceReconcileTimeout)
@@ -89,8 +89,6 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		}
 	}
 
-	logger.Info("Checking if old private endpoints should be deleted")
-
 	// Delete all private endpoints that got deleted from AzureCluster.
 	// We list all private endpoints in the resource group, the check which are owned by CAPZ, and we
 	// delete those private endpoints that are owned by CAPZ, but that are not found in AzureCluster
@@ -104,7 +102,6 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	}
 
 	for _, existingPrivateEndpointObj := range existingPrivateEndpoints {
-		logger.Info("Found private endpoint")
 		existingPrivateEndpoint, ok := existingPrivateEndpointObj.(network.PrivateEndpoint)
 		if !ok {
 			return errors.Errorf("%T is not a network.PrivateEndpoint", existingPrivateEndpointObj)
@@ -112,21 +109,18 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		if existingPrivateEndpoint.Name == nil {
 			return errors.Errorf("got private endpoint object without name")
 		}
-		logger.Info("Found private endpoint with name", "name", *existingPrivateEndpoint.Name)
 
 		wanted := false
 		for _, spec := range s.Scope.PrivateEndpointSpecs() {
 			if spec.ResourceName() == *existingPrivateEndpoint.Name {
 				// existing private endpoint found in specs, meaning we want it
 				wanted = true
-				logger.Info("Found private endpoint is wanted")
 				break
 			}
 		}
 		if wanted {
 			continue
 		}
-		logger.Info("Found private endpoint is not wanted, deleting it")
 		// Existing private endpoint is not found in specs. There are two cases now:
 		// 1. if the private endpoint is created and owned by CAPZ, delete it
 		// 2. if the private endpoint is NOT created and owned by CAPZ, ignore it
@@ -134,13 +128,11 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			MapToTags(existingPrivateEndpoint.Tags).
 			HasOwned(s.Scope.ClusterName())
 		if privateEndpointIsOwned {
-			logger.Info("Found private endpoint is owned, deleting it")
 			privateEndpointSpec := PrivateEndpointSpec{
 				Name:          *existingPrivateEndpoint.Name,
 				ResourceGroup: s.Scope.ResourceGroup(),
 			}
 			if err := s.DeleteResource(ctx, &privateEndpointSpec, ServiceName); err != nil {
-				logger.Info("Got an error when deleting private endpoint", "error", err)
 				if !azure.IsOperationNotDoneError(err) || result == nil {
 					result = err
 				}

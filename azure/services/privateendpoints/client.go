@@ -57,29 +57,24 @@ func (ac *azureClient) Get(ctx context.Context, spec azure.ResourceSpecGetter) (
 }
 
 func (ac *azureClient) List(ctx context.Context, ownerResourceName string) (result []interface{}, err error) {
-	ctx, logger, done := tele.StartSpanWithLogger(ctx, "privateendpoints.AzureClient.List")
-	defer done()
+	ctx, span := tele.Tracer().Start(ctx, "privateendpoints.AzureClient.List")
+	defer span.End()
 
 	listResult, err := ac.privateendpoints.List(ctx, ownerResourceName)
 	if err != nil {
 		return nil, errors.Errorf("an error occurred when listing private endpoints in resource group %s", ownerResourceName)
 	}
-	logger.Info("Listing done", "count", len(listResult.Values()))
 
 	var nextErr error
-	logger.Info("Loop start")
 	for ; listResult.NotDone(); nextErr = listResult.NextWithContext(ctx) {
-		logger.Info("In loop")
 		if nextErr != nil {
 			return nil, errors.Errorf("an error occurred when getting the next private endpoints from list result")
 		}
 
 		for _, privateEndpoint := range listResult.Values() {
 			result = append(result, privateEndpoint)
-			logger.Info("Added private endpoint to results", "name", *privateEndpoint.Name)
 		}
 	}
-	logger.Info("Loop end")
 	return result, err
 }
 
