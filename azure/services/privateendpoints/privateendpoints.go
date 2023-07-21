@@ -101,7 +101,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		s.Scope.DeleteLongRunningOperationState(deleteFuture.Name, deleteFuture.ServiceName, deleteFuture.Type)
 	}
 
-	// now let's delete private endpoints that got remvoed from the CR
+	// now let's delete private endpoints that got removed from the CR
 	existingPrivateEndpoints, err := s.client.List(ctx, s.Scope.ResourceGroup())
 	if err != nil {
 		return err
