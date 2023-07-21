@@ -217,6 +217,45 @@ func (mr *MockGetterMockRecorder) Get(ctx, spec any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockGetter)(nil).Get), ctx, spec)
 }
 
+// MockLister is a mock of Lister interface.
+type MockLister struct {
+	ctrl     *gomock.Controller
+	recorder *MockListerMockRecorder
+	isgomock struct{}
+}
+
+// MockListerMockRecorder is the mock recorder for MockLister.
+type MockListerMockRecorder struct {
+	mock *MockLister
+}
+
+// NewMockLister creates a new mock instance.
+func NewMockLister(ctrl *gomock.Controller) *MockLister {
+	mock := &MockLister{ctrl: ctrl}
+	mock.recorder = &MockListerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLister) EXPECT() *MockListerMockRecorder {
+	return m.recorder
+}
+
+// List mocks base method.
+func (m *MockLister) List(ctx context.Context, ownerResourceName string) ([]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, ownerResourceName)
+	ret0, _ := ret[0].([]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// List indicates an expected call of List.
+func (mr *MockListerMockRecorder) List(ctx, ownerResourceName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockLister)(nil).List), ctx, ownerResourceName)
+}
+
 // MockTagsGetter is a mock of TagsGetter interface.
 type MockTagsGetter struct {
 	ctrl     *gomock.Controller
