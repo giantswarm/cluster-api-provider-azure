@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/natgateways"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/privatedns"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/privateendpoints"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/services/privatelinks"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/publicips"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/resourceskus"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/routetables"
@@ -73,6 +74,10 @@ func newAzureClusterService(scope *scope.ClusterScope) (*azureClusterService, er
 	if err != nil {
 		return nil, err
 	}
+	privateLinksSvc, err := privatelinks.New(scope)
+	if err != nil {
+		return nil, err
+	}
 	vnetPeeringsSvc, err := vnetpeerings.New(scope)
 	if err != nil {
 		return nil, err
@@ -81,6 +86,7 @@ func newAzureClusterService(scope *scope.ClusterScope) (*azureClusterService, er
 	if err != nil {
 		return nil, err
 	}
+
 	acs := &azureClusterService{
 		scope: scope,
 		services: []azure.ServiceReconciler{
@@ -94,6 +100,7 @@ func newAzureClusterService(scope *scope.ClusterScope) (*azureClusterService, er
 			vnetPeeringsSvc,
 			loadbalancersSvc,
 			privateDNSSvc,
+			privateLinksSvc,
 			privateendpoints.New(scope),
 			bastionhosts.New(scope),
 		},
