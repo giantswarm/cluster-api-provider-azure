@@ -58,6 +58,25 @@ func (ac *azureClient) Get(ctx context.Context, spec azure.ResourceSpecGetter) (
 	return resp.PrivateEndpoint, nil
 }
 
+func (ac *azureClient) List(ctx context.Context, resourceGroupName string) (result []armnetwork.PrivateEndpoint, err error) {
+	ctx, _, done := tele.StartSpanWithLogger(ctx, "privateendpoints.AzureClient.List")
+	defer done()
+
+	var privateEndpoints []armnetwork.PrivateEndpoint
+	pager := ac.privateendpoints.NewListPager(resourceGroupName, nil)
+	for pager.More() {
+		nextResult, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not iterate inbound NAT rules")
+		}
+		for _, privateEndpoint := range nextResult.Value {
+			privateEndpoints = append(privateEndpoints, *privateEndpoint)
+		}
+	}
+
+	return privateEndpoints, nil
+}
+
 // CreateOrUpdateAsync creates a private endpoint.
 // It sends a PUT request to Azure and if accepted without error, the func will return a Poller which can be used to track the ongoing
 // progress of the operation.
