@@ -993,6 +993,11 @@ func (s *ClusterScope) GetLongRunningOperationState(name, service, futureType st
 	return futures.Get(s.AzureCluster, name, service, futureType)
 }
 
+// GetLongRunningOperationStates will get the specified futures on the AzureCluster status.
+func (s *ClusterScope) GetLongRunningOperationStates(service, futureType string) infrav1.Futures {
+	return futures.GetByServiceAndType(s.AzureCluster, service, futureType)
+}
+
 // DeleteLongRunningOperationState will delete the future from the AzureCluster status.
 func (s *ClusterScope) DeleteLongRunningOperationState(name, service, futureType string) {
 	futures.Delete(s.AzureCluster, name, service, futureType)
