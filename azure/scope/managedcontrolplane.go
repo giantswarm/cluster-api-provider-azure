@@ -28,6 +28,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/secret"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/groups"
@@ -38,11 +44,6 @@ import (
 	"sigs.k8s.io/cluster-api-provider-azure/util/futures"
 	"sigs.k8s.io/cluster-api-provider-azure/util/maps"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
-	"sigs.k8s.io/cluster-api/util/secret"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const resourceHealthWarningInitialGracePeriod = 1 * time.Hour
@@ -609,6 +610,11 @@ func (s *ManagedControlPlaneScope) SetKubeConfigData(kubeConfigData []byte) {
 // in the next reconciliation.
 func (s *ManagedControlPlaneScope) SetLongRunningOperationState(future *infrav1.Future) {
 	futures.Set(s.ControlPlane, future)
+}
+
+// GetLongRunningOperationStates will get the specified futures on the AzureCluster status.
+func (s *ManagedControlPlaneScope) GetLongRunningOperationStates(service, futureType string) infrav1.Futures {
+	return futures.GetByServiceAndType(s.ControlPlane, service, futureType)
 }
 
 // GetLongRunningOperationState will get the future on the AzureManagedControlPlane status.
