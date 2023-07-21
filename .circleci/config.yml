@@ -1,0 +1,66 @@
+# We are supposed to use architect-orb to build&push container images.
+# However, architect-orb has strict rules and tests. We don't have full control over this repository.
+# That is why we introduced this custom configuration in this repository.
+# Keep this file as it is while merging changes from upstream repository.
+
+version: 2.1
+
+jobs:
+  build:
+    machine:
+      image: ubuntu-2204:2023.02.1
+    resource_class: large
+    steps:
+    - checkout
+    - run:
+        name : Build container
+        command: |
+          # setup vars
+          export REGISTRY=quay.io/giantswarm
+          export IMAGE_NAME=cluster-api-azure-controller
+          export ARCH=amd64
+          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
+          
+          # Build container image with upstream make docker-build
+          make docker-build
+    - run:
+        name: Push to quay.io
+        command: |
+          # login
+          echo "$QUAY_PASSWORD" | docker login quay.io --username $QUAY_USERNAME --password-stdin
+          
+          # setup vars
+          export REGISTRY=quay.io/giantswarm
+          export IMAGE_NAME=cluster-api-azure-controller
+          export ARCH=amd64
+          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
+          
+          # tag and push
+          docker tag $REGISTRY/$IMAGE_NAME-$ARCH:$TAG $REGISTRY/$IMAGE_NAME:$TAG
+          docker push $REGISTRY/$IMAGE_NAME:$TAG
+    - run:
+        name: Push to docker.io
+        command: |
+          # login
+          echo "$DOCKER_PASSWORD" | docker login --username $DOCKER_USERNAME --password-stdin
+          
+          # setup vars
+          export REGISTRY=quay.io/giantswarm
+          export DOCKER_REGISTRY=docker.io/giantswarm
+          export IMAGE_NAME=cluster-api-azure-controller
+          export ARCH=amd64
+          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
+          
+          # tag and push
+          docker tag $REGISTRY/$IMAGE_NAME-$ARCH:$TAG $DOCKER_REGISTRY/$IMAGE_NAME:$TAG
+          docker push $DOCKER_REGISTRY/$IMAGE_NAME:$TAG
+workflows:
+  build-workflow:
+    jobs:
+    - build:
+        context:
+        - architect
+        filters:
+          # Trigger the job also on git tag.
+          tags:
+            only: /^v.*/
