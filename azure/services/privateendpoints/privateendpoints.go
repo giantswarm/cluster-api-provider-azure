@@ -19,8 +19,12 @@ package privateendpoints
 import (
 	"context"
 
+	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2022-05-01/network"
+	"github.com/pkg/errors"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
+	"sigs.k8s.io/cluster-api-provider-azure/azure/converters"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/async"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
 	"sigs.k8s.io/cluster-api-provider-azure/util/tele"
@@ -33,12 +37,16 @@ const ServiceName = "privateendpoints"
 type PrivateEndpointScope interface {
 	azure.Authorizer
 	azure.AsyncStatusUpdater
+	ClusterName() string
+	ResourceGroup() string
 	PrivateEndpointSpecs() []azure.ResourceSpecGetter
+	GetLongRunningOperationStates(service, futureType string) infrav1.Futures
 }
 
 // Service provides operations on Azure resources.
 type Service struct {
-	Scope PrivateEndpointScope
+	client *azureClient
+	Scope  PrivateEndpointScope
 	async.Reconciler
 }
 
@@ -46,6 +54,7 @@ type Service struct {
 func New(scope PrivateEndpointScope) *Service {
 	Client := newClient(scope)
 	return &Service{
+		client:     Client,
 		Scope:      scope,
 		Reconciler: async.New(scope, Client, Client),
 	}
@@ -65,9 +74,6 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	defer cancel()
 
 	specs := s.Scope.PrivateEndpointSpecs()
-	if len(specs) == 0 {
-		return nil
-	}
 
 	// We go through the list of PrivateEndpointSpecs to reconcile each one, independently of the result of the previous one.
 	// If multiple errors occur, we return the most pressing one.
@@ -80,6 +86,66 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		if _, err := s.CreateOrUpdateResource(ctx, privateEndpointSpec, ServiceName); err != nil {
 			if !azure.IsOperationNotDoneError(err) || result == nil {
 				result = err
+			}
+		}
+	}
+
+	// Delete all private endpoints that got deleted from AzureCluster.
+	// We list all private endpoints in the resource group, then check which are owned by CAPZ, and we
+	// delete those private endpoints that are owned by CAPZ, but that are not found in AzureCluster
+	// (assuming they were in the AzureCluster, but then they were deleted).
+
+	// clear leftover DELETE futures (from previously deleted private endpoints)
+	deleteFutures := s.Scope.GetLongRunningOperationStates(ServiceName, infrav1.DeleteFuture)
+	for _, deleteFuture := range deleteFutures {
+		s.Scope.DeleteLongRunningOperationState(deleteFuture.Name, deleteFuture.ServiceName, deleteFuture.Type)
+	}
+
+	// now let's delete private endpoints that got removed from the CR
+	existingPrivateEndpoints, err := s.client.List(ctx, s.Scope.ResourceGroup())
+	if err != nil {
+		return err
+	}
+	if len(specs) == 0 && len(existingPrivateEndpoints) == 0 {
+		s.Scope.UpdatePutStatus(infrav1.PrivateEndpointsReadyCondition, ServiceName, result)
+		return nil
+	}
+
+	for _, existingPrivateEndpointObj := range existingPrivateEndpoints {
+		existingPrivateEndpoint, ok := existingPrivateEndpointObj.(network.PrivateEndpoint)
+		if !ok {
+			return errors.Errorf("%T is not a network.PrivateEndpoint", existingPrivateEndpointObj)
+		}
+		if existingPrivateEndpoint.Name == nil {
+			return errors.Errorf("got private endpoint object without name")
+		}
+
+		wanted := false
+		for _, spec := range s.Scope.PrivateEndpointSpecs() {
+			if spec.ResourceName() == *existingPrivateEndpoint.Name {
+				// existing private endpoint found in specs, meaning we want it
+				wanted = true
+				break
+			}
+		}
+		if wanted {
+			continue
+		}
+		// Existing private endpoint is not found in specs. There are two cases now:
+		// 1. if the private endpoint is created and owned by CAPZ, delete it
+		// 2. if the private endpoint is NOT created and owned by CAPZ, ignore it
+		privateEndpointIsOwned := converters.
+			MapToTags(existingPrivateEndpoint.Tags).
+			HasOwned(s.Scope.ClusterName())
+		if privateEndpointIsOwned {
+			privateEndpointSpec := PrivateEndpointSpec{
+				Name:          *existingPrivateEndpoint.Name,
+				ResourceGroup: s.Scope.ResourceGroup(),
+			}
+			if err := s.DeleteResource(ctx, &privateEndpointSpec, ServiceName); err != nil {
+				if !azure.IsOperationNotDoneError(err) || result == nil {
+					result = err
+				}
 			}
 		}
 	}
