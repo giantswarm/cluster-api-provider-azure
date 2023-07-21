@@ -94,16 +94,19 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	// We list all private endpoints in the resource group, then check which are owned by CAPZ, and we
 	// delete those private endpoints that are owned by CAPZ, but that are not found in AzureCluster
 	// (assuming they were in the AzureCluster, but then they were deleted).
+
+	// clear leftover DELETE futures (from previously deleted private endpoints)
+	deleteFutures := s.Scope.GetLongRunningOperationStates(ServiceName, infrav1.DeleteFuture)
+	for _, deleteFuture := range deleteFutures {
+		s.Scope.DeleteLongRunningOperationState(deleteFuture.Name, deleteFuture.ServiceName, deleteFuture.Type)
+	}
+
+	// now let's delete private endpoints that got remvoed from the CR
 	existingPrivateEndpoints, err := s.client.List(ctx, s.Scope.ResourceGroup())
 	if err != nil {
 		return err
 	}
 	if len(specs) == 0 && len(existingPrivateEndpoints) == 0 {
-		// clear leftover DELETE futures
-		deleteFutures := s.Scope.GetLongRunningOperationStates(ServiceName, infrav1.DeleteFuture)
-		for _, deleteFuture := range deleteFutures {
-			s.Scope.DeleteLongRunningOperationState(deleteFuture.Name, deleteFuture.ServiceName, deleteFuture.Type)
-		}
 		s.Scope.UpdatePutStatus(infrav1.PrivateEndpointsReadyCondition, ServiceName, result)
 		return nil
 	}
