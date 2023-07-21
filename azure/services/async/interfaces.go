@@ -21,6 +21,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 )
 
@@ -32,6 +33,11 @@ type FutureScope interface {
 // Getter gets a resource.
 type Getter interface {
 	Get(ctx context.Context, spec azure.ResourceSpecGetter) (result interface{}, err error)
+}
+
+// Lister is an interface that can list resources.
+type Lister interface {
+	List(ctx context.Context, ownerResourceName string) (result []interface{}, err error)
 }
 
 // TagsGetter is an interface that can get a tags resource.
