@@ -40,6 +40,7 @@ type PrivateEndpointScope interface {
 	ClusterName() string
 	ResourceGroup() string
 	PrivateEndpointSpecs() []azure.ResourceSpecGetter
+	GetLongRunningOperationStates(service, futureType string) infrav1.Futures
 }
 
 // Service provides operations on Azure resources.
@@ -90,7 +91,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	}
 
 	// Delete all private endpoints that got deleted from AzureCluster.
-	// We list all private endpoints in the resource group, the check which are owned by CAPZ, and we
+	// We list all private endpoints in the resource group, then check which are owned by CAPZ, and we
 	// delete those private endpoints that are owned by CAPZ, but that are not found in AzureCluster
 	// (assuming they were in the AzureCluster, but then they were deleted).
 	existingPrivateEndpoints, err := s.client.List(ctx, s.Scope.ResourceGroup())
@@ -98,6 +99,12 @@ func (s *Service) Reconcile(ctx context.Context) error {
 		return err
 	}
 	if len(specs) == 0 && len(existingPrivateEndpoints) == 0 {
+		// clear leftover DELETE futures
+		deleteFutures := s.Scope.GetLongRunningOperationStates(ServiceName, infrav1.DeleteFuture)
+		for _, deleteFuture := range deleteFutures {
+			s.Scope.DeleteLongRunningOperationState(deleteFuture.Name, deleteFuture.ServiceName, deleteFuture.Type)
+		}
+		s.Scope.UpdatePutStatus(infrav1.PrivateEndpointsReadyCondition, ServiceName, result)
 		return nil
 	}
 
