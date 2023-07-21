@@ -22,6 +22,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
 	"github.com/pkg/errors"
+
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/async"
 	"sigs.k8s.io/cluster-api-provider-azure/util/reconciler"
@@ -56,6 +57,25 @@ func (ac *azureClient) Get(ctx context.Context, spec azure.ResourceSpecGetter) (
 		return nil, err
 	}
 	return resp.PrivateEndpoint, nil
+}
+
+func (ac *azureClient) List(ctx context.Context, resourceGroupName string) (result []armnetwork.PrivateEndpoint, err error) {
+	ctx, _, done := tele.StartSpanWithLogger(ctx, "privateendpoints.AzureClient.List")
+	defer done()
+
+	var privateEndpoints []armnetwork.PrivateEndpoint
+	pager := ac.privateendpoints.NewListPager(resourceGroupName, nil)
+	for pager.More() {
+		nextResult, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not iterate inbound NAT rules")
+		}
+		for _, privateEndpoint := range nextResult.Value {
+			privateEndpoints = append(privateEndpoints, *privateEndpoint)
+		}
+	}
+
+	return privateEndpoints, nil
 }
 
 // CreateOrUpdateAsync creates a private endpoint.
