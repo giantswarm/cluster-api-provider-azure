@@ -1119,6 +1119,7 @@ func (s *ClusterScope) PrivateLinkSpecs() []azure.ResourceSpecGetter {
 			ResourceGroup:             s.ResourceGroup(),
 			SubscriptionID:            s.SubscriptionID(),
 			Location:                  s.Location(),
+			VNetResourceGroup:         s.Vnet().ResourceGroup,
 			VNet:                      s.Vnet().Name,
 			LoadBalancerName:          s.APIServerLBName(),
 			LBFrontendIPConfigNames:   privateLink.LBFrontendIPConfigNames,
