@@ -716,8 +716,7 @@ func validateLBPrivateLinks(lb LoadBalancerSpec, oldLb LoadBalancerSpec, subnets
 					}
 				}
 				if !lbFrontendIPNameValid {
-					_, errorAlreadyAdded := lbFrontendIPNamesErrorAdded[lbFrontendIPName]
-					if !errorAlreadyAdded {
+					if _, errorAlreadyAdded := lbFrontendIPNamesErrorAdded[lbFrontendIPName]; !errorAlreadyAdded {
 						allErrs = append(
 							allErrs,
 							field.Invalid(
@@ -728,13 +727,7 @@ func validateLBPrivateLinks(lb LoadBalancerSpec, oldLb LoadBalancerSpec, subnets
 					}
 					break
 				}
-
-				_, ok := lbFrontendIPNamesCount[lbFrontendIPName]
-				if ok {
-					lbFrontendIPNamesCount[lbFrontendIPName]++
-				} else {
-					lbFrontendIPNamesCount[lbFrontendIPName] = 1
-				}
+				lbFrontendIPNamesCount[lbFrontendIPName]++
 			}
 
 			for lbFrontendIPConfigName, count := range lbFrontendIPNamesCount {
