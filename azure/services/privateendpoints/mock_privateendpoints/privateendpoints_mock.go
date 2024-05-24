@@ -113,6 +113,20 @@ func (mr *MockPrivateEndpointScopeMockRecorder) CloudEnvironment() *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloudEnvironment", reflect.TypeOf((*MockPrivateEndpointScope)(nil).CloudEnvironment))
 }
 
+// ClusterName mocks base method.
+func (m *MockPrivateEndpointScope) ClusterName() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClusterName")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// ClusterName indicates an expected call of ClusterName.
+func (mr *MockPrivateEndpointScopeMockRecorder) ClusterName() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClusterName", reflect.TypeOf((*MockPrivateEndpointScope)(nil).ClusterName))
+}
+
 // DeleteLongRunningOperationState mocks base method.
 func (m *MockPrivateEndpointScope) DeleteLongRunningOperationState(arg0, arg1, arg2 string) {
 	m.ctrl.T.Helper()
@@ -137,6 +151,20 @@ func (m *MockPrivateEndpointScope) GetLongRunningOperationState(arg0, arg1, arg2
 func (mr *MockPrivateEndpointScopeMockRecorder) GetLongRunningOperationState(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLongRunningOperationState", reflect.TypeOf((*MockPrivateEndpointScope)(nil).GetLongRunningOperationState), arg0, arg1, arg2)
+}
+
+// GetLongRunningOperationStates mocks base method.
+func (m *MockPrivateEndpointScope) GetLongRunningOperationStates(service, futureType string) v1beta1.Futures {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLongRunningOperationStates", service, futureType)
+	ret0, _ := ret[0].(v1beta1.Futures)
+	return ret0
+}
+
+// GetLongRunningOperationStates indicates an expected call of GetLongRunningOperationStates.
+func (mr *MockPrivateEndpointScopeMockRecorder) GetLongRunningOperationStates(service, futureType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLongRunningOperationStates", reflect.TypeOf((*MockPrivateEndpointScope)(nil).GetLongRunningOperationStates), service, futureType)
 }
 
 // HashKey mocks base method.
@@ -165,6 +193,20 @@ func (m *MockPrivateEndpointScope) PrivateEndpointSpecs() []azure.ResourceSpecGe
 func (mr *MockPrivateEndpointScopeMockRecorder) PrivateEndpointSpecs() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrivateEndpointSpecs", reflect.TypeOf((*MockPrivateEndpointScope)(nil).PrivateEndpointSpecs))
+}
+
+// ResourceGroup mocks base method.
+func (m *MockPrivateEndpointScope) ResourceGroup() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResourceGroup")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// ResourceGroup indicates an expected call of ResourceGroup.
+func (mr *MockPrivateEndpointScopeMockRecorder) ResourceGroup() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourceGroup", reflect.TypeOf((*MockPrivateEndpointScope)(nil).ResourceGroup))
 }
 
 // SetLongRunningOperationState mocks base method.
