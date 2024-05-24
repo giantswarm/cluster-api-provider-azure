@@ -99,6 +99,10 @@ func newAzureClusterService(scope *scope.ClusterScope) (*azureClusterService, er
 	if err != nil {
 		return nil, err
 	}
+	privateLinksSvc, err := privatelinks.New(scope)
+	if err != nil {
+		return nil, err
+	}
 	acs := &azureClusterService{
 		scope: scope,
 		services: []azure.ServiceReconciler{
@@ -108,23 +112,13 @@ func newAzureClusterService(scope *scope.ClusterScope) (*azureClusterService, er
 			routeTablesSvc,
 			publicIPsSvc,
 			natgateways.New(scope),
-<<<<<<< HEAD
 			subnetsSvc,
 			vnetPeeringsSvc,
 			loadbalancersSvc,
 			privateDNSSvc,
 			bastionHostsSvc,
 			privateEndpointsSvc,
-=======
-			subnets.New(scope),
-			vnetpeerings.New(scope),
-			loadbalancers.New(scope),
-			privatelinks.New(scope),
-			privatedns.New(scope),
-			bastionhosts.New(scope),
-			privateendpoints.New(scope),
-			tags.New(scope),
->>>>>>> bd889bc50 (Add Private Links support (#17))
+			privateLinksSvc,
 		},
 		skuCache: skuCache,
 	}
