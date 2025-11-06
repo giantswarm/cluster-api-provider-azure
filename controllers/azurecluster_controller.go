@@ -102,15 +102,15 @@ func (acr *AzureClusterReconciler) SetupWithManager(ctx context.Context, mgr ctr
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=azureclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=azureclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=azureclusters/status;azureclusters/finalizers,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=azuremachinetemplates;azuremachinetemplates/status,verbs=get;list;watch
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=azureclusteridentities;azureclusteridentities/status,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=azuremachinetemplates;azuremachinetemplates/status;azuremachinetemplates/finalizers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=azureclusteridentities;azureclusteridentities/status;azureclusteridentities/finalizers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=list;
 // +kubebuilder:rbac:groups=resources.azure.com,resources=resourcegroups,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=resources.azure.com,resources=resourcegroups/status,verbs=get;list;watch
+// +kubebuilder:rbac:groups=resources.azure.com,resources=resourcegroups/status;resourcegroups/finalizers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=network.azure.com,resources=natgateways;bastionhosts;privateendpoints;virtualnetworks;virtualnetworkssubnets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=network.azure.com,resources=natgateways/status;bastionhosts/status;privateendpoints/status;virtualnetworks/status;virtualnetworkssubnets/status,verbs=get;list;watch
+// +kubebuilder:rbac:groups=network.azure.com,resources=natgateways/status;bastionhosts/status;privateendpoints/status;virtualnetworks/status;virtualnetworkssubnets/status;natgateways/finalizers;bastionhosts/finalizers;privateendpoints/finalizers;virtualnetworks/finalizers;virtualnetworkssubnets/finalizers,verbs=get;list;watch
 
 // Reconcile idempotently gets, creates, and updates a cluster.
 func (acr *AzureClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reterr error) {
