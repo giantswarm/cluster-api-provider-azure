@@ -1,50 +1,70 @@
-# We are supposed to use architect-orb to build&push container images.
-# However, architect-orb has strict rules and tests. We don't have full control over this repository.
-# That is why we introduced this custom configuration in this repository.
-# Keep this file as it is while merging changes from upstream repository.
-
 version: 2.1
+orbs:
+  go: circleci/go@1.11.0
 
 jobs:
+  test:
+    resource_class: large
+    executor:
+      name: go/default
+      tag: "1.22.3"
+    steps:
+      - checkout
+      - go/load-cache
+      - go/mod-download
+      - run:
+          command: make setup-envtest
+      - go/save-cache
+      - run:
+          command: make test
+
   build:
     machine:
-      image: ubuntu-2204:2023.02.1
-    resource_class: large
+      image: "ubuntu-2204:2024.05.1"
+    environment:
+      ALL_ARCH: "amd64 arm64"
+      REGISTRY_AZURE: gsoci.azurecr.io/giantswarm
     steps:
-    - checkout
-    - run:
-        name : Build container
-        command: |
-          # setup vars
-          export REGISTRY=gsoci.azurecr.io/giantswarm
-          export IMAGE_NAME=cluster-api-azure-controller
-          export ARCH=amd64
-          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
+      - checkout
 
-          # Build container image with upstream make docker-build
-          make docker-build
-    - run:
-        name: Push to gsoci.azurecr.io
-        command: |
-          # login
-          echo "$ACR_GSOCI_PASSWORD" | docker login gsoci.azurecr.io --username $ACR_GSOCI_USERNAME --password-stdin
+      - run:
+          name: Ensure 'make generate' matches commit
+          command: |
+            make generate
+            git diff --exit-code || { echo "There are differences in generated files. Please run and commit 'make generate'. Else we can run into CRDs mismatching the code."; exit 1; }
 
-          # setup vars
-          export REGISTRY=gsoci.azurecr.io/giantswarm
-          export IMAGE_NAME=cluster-api-azure-controller
-          export ARCH=amd64
-          export TAG="${CIRCLE_TAG:-"${CIRCLE_SHA1}"}"
+      - run:
+          name: Build the CAPZ docker images
+          command: |
+            for registry in $REGISTRY_AZURE; do
+              make docker-build-all ALL_ARCH="$ALL_ARCH" TAG=$CIRCLE_SHA1 REGISTRY=$registry
 
-          # tag and push
-          docker tag $REGISTRY/$IMAGE_NAME-$ARCH:$TAG $REGISTRY/$IMAGE_NAME:$TAG
-          docker push $REGISTRY/$IMAGE_NAME:$TAG
+              if [ -n "$CIRCLE_TAG" ]; then
+                echo "Building tag $CIRCLE_TAG"
+                make docker-build-all ALL_ARCH="$ALL_ARCH" TAG="$CIRCLE_TAG" REGISTRY=$registry
+              fi
+            done
+
+      - run:
+          name: Push to Azure
+          command: |
+            docker login --username $ACR_GSOCI_USERNAME --password $ACR_GSOCI_PASSWORD "${REGISTRY_AZURE%/*}"
+
+            make docker-push-all ALL_ARCH="$ALL_ARCH" TAG=$CIRCLE_SHA1 REGISTRY=$REGISTRY_AZURE
+
+            if [ -n "$CIRCLE_TAG" ]; then
+              echo "Pushing tag $CIRCLE_TAG"
+              make docker-push-all ALL_ARCH="$ALL_ARCH" TAG="$CIRCLE_TAG" REGISTRY=$REGISTRY_AZURE
+            fi
+
 workflows:
-  build-workflow:
+  version: 2
+  build_and_update:
     jobs:
-    - build:
-        context:
-        - architect
-        filters:
-          # Trigger the job also on git tag.
-          tags:
-            only: /^v.*/
+      - build:
+          context:
+            - architect
+          filters:
+            tags:
+              only: /^v.*/
+      - test
