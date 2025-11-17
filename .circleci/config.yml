@@ -19,6 +19,7 @@ jobs:
           command: make test
 
   build:
+    resource_class: large
     machine:
       image: "ubuntu-2204:2024.05.1"
     environment:
