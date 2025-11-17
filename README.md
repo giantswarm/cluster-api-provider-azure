@@ -1,145 +1,112 @@
-# Kubernetes Cluster API Provider Azure
+# Cluster API Provider Azure
 
-<p align="center">
-<img src="https://github.com/kubernetes/kubernetes/raw/master/logo/logo.png"  width="100">
-</p>
-<p align="center">
-<!-- go doc / reference card -->
-<a href="https://pkg.go.dev/sigs.k8s.io/cluster-api-provider-azure">
-<img src="https://godoc.org/sigs.k8s.io/cluster-api-provider-azure?status.svg"></a>
-<!-- goreportcard badge -->
-<a href="https://goreportcard.com/report/kubernetes-sigs/cluster-api-provider-azure">
-<img src="https://goreportcard.com/badge/kubernetes-sigs/cluster-api-provider-azure"></a>
-<!-- join kubernetes slack channel for cluster-api-azure-provider -->
-<a href="https://kubernetes.slack.com/messages/CEX9HENG7">
-<img src="https://img.shields.io/badge/join%20slack-%23cluster--api--azure-brightgreen"></a>
-</p>
+This is Giant Swarm's fork. See the upstream [cluster-api-provider-azure README](https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/main/README.md) for official documentation.
 
-------
+## How to work with this repo
 
-Kubernetes-native declarative infrastructure for Azure.
+Currently, we try to follow the upstream `release-X.Y` branch to always get the latest stable release and fixes, but not untested commits from `main`. Our only differences against upstream should be in this `README.md`, `.circleci/`, `.github/pull_request_template.md`, `.github/workflows/release.yaml` and deletion of other `.github/workflows/*` files not relevant to us. Other changes should be opened as PR for the upstream project first.
 
-## What is the Cluster API Provider Azure (CAPZ)
+We release cluster-api-provider-azure versions with [cluster-api-provider-azure-app](https://github.com/giantswarm/cluster-api-provider-azure-app/). To provide the YAML manifests, we use GitHub releases as the upstream project. The scripts in `cluster-api-provider-azure-app` convert them into the final manifests.
 
-The [Cluster API][cluster_api] brings declarative, Kubernetes-style APIs to cluster creation, configuration and management.
+### Repo setup
 
-The API itself is shared across multiple cloud providers allowing for true Azure hybrid deployments of Kubernetes.
+Since we follow upstream, add their Git repo as remote from which we merge commits:
 
-CAPZ enables efficient management at scale of self-managed or managed (AKS) clusters on Azure.  Furthermore, the CAPZ management cluster can be utilized with the automatically installed Azure Service Operator (ASO) installation dependency to manage any Azure infrastructure.  For more information see the [roadmap high level vision](https://capz.sigs.k8s.io/roadmap#high-level-vision).
+```sh
+git clone git@github.com:giantswarm/cluster-api-provider-azure.git
+cd cluster-api-provider-azure
+git remote add upstream https://github.com/kubernetes-sigs/cluster-api-provider-azure.git
+```
 
-## Documentation
+### Test and release
 
-Please see our [Book](https://capz.sigs.k8s.io) for in-depth user documentation.
+If you have a non-urgent fix, create an upstream PR and wait until it gets released. We call this release `vX.Y.Z` in the below instructions, so please fill in the desired tag.
 
-Additional docs can be found in the `/docs` directory, and the [index is here](https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/main/docs/README.md).
+Please follow the development workflow:
 
-## Quick Start
+- Ensure a stable release branch exists in our fork repo. For example with a desired upstream release v2.2.1, the branch is `release-2.2`. If it does not exist on our side yet, copy the branch from upstream and add our changes such as `README.md` and `.circleci/` on top.
+- Create a working branch for your changes
+- We want to use stable upstream release tags unless a hotfix is absolutely required ([decision](https://intranet.giantswarm.io/docs/product/pdr/010_fork_management/)). Please decide what type of change you're making:
 
-Check out the [Cluster API Quick Start][quickstart] to create your first Kubernetes cluster on Azure using Cluster API.
+  - Either: you want to merge and test the latest upstream tag
 
-## Flavors
+    ```sh
+    # Get latest changes on our release branch
+    git checkout release-X.Y
+    git pull
 
-See the [flavors documentation][flavors_doc] to know which cluster templates are provided by CAPZ.
+    git fetch upstream
 
-## Getting Help
+    git checkout -b my-working-branch release-X.Y
 
-If you need help with CAPZ, please visit the [#cluster-api-azure][slack] channel on Slack, open a [GitHub issue](#github-issues), or join us at [Office Hours](#office-hours).
+    # Create a merge commit using upstream's desired release tag (the one we want
+    # to upgrade to).
+    # This creates a commit message such as "Merge tag 'v2.2.1' into release-2.2".
+    git merge --no-ff vX.Y.Z
 
-------
+    # Since we want the combined content of our repo and the upstream Git tag,
+    # we need to create our own tag on the merge commit
+    git tag "vX.Y.Z-gs-$(git rev-parse --short HEAD)"
 
-## Compatibility
+    # Push your working branch. This triggers image build in CircleCI.
+    git push
 
-### Cluster API Versions
+    # Push your Giant Swarm tag (assuming `origin` is the Giant Swarm fork).
+    # This triggers the GitHub release action - please continue reading below!
+    git push origin "vX.Y.Z-gs-$(git rev-parse --short HEAD)"
+    ```
 
-Currently, CAPZ is compatible only with the `v1beta1` version of CAPI (v1.0.x). Support for `v1alpha3` (v0.3.x) and `v1alpha4` (v0.4.x) is deprecated and has been removed.
+  - Or: you want to implement something else, such as working on some issue that we have which is not fixed in upstream yet. Note that for testing changes to upstream, you probably better base your work on the `upstream/main` branch and try your change together with the latest commits from upstream. This also avoids merge conflicts. Maintainers can then help you cherry-pick into their release branches. The latest release branch is usually a bit behind `main`.
 
-### Kubernetes Versions
+    ```sh
+    # Get latest changes on our release branch
+    git checkout release-X.Y
+    git pull
 
-The Azure provider is able to install and manage the [versions of Kubernetes supported by the Cluster API (CAPI) project](https://cluster-api.sigs.k8s.io/reference/versions.html#supported-kubernetes-versions).
+    git checkout -b my-working-branch release-X.Y # or based on `main` instead of `release-X.Y`, see hint above
 
-#### Managed Clusters (AKS)
+    # Make some changes and commit as usual
+    git commit
 
-Managed Clusters (AKS) follow their own [Kubernetes version support policy](https://learn.microsoft.com/azure/aks/supported-kubernetes-versions?tabs=azure-cli#kubernetes-version-support-policy). Please use the Azure portal or CLI to [find the versions supported in your cluster's location](https://learn.microsoft.com/azure/aks/supported-kubernetes-versions?tabs=azure-cli#azure-portal-and-cli-versions).
+    git tag "vX.Y.Z-gs-$(git rev-parse --short HEAD)"
 
-For more information on Kubernetes version support, see the [Cluster API book](https://cluster-api.sigs.k8s.io/reference/versions.html).
+    # Push your working branch. This triggers image build in CircleCI
+    git push
 
-------
+    # Push your Giant Swarm tag (assuming `origin` is the Giant Swarm fork).
+    # This triggers the GitHub release action - please continue reading below!
+    git push origin "vX.Y.Z-gs-$(git rev-parse --short HEAD)"
+    ```
 
-## Getting involved and contributing
+- Check that the [CircleCI pipeline](https://app.circleci.com/pipelines/github/giantswarm/cluster-api-provider-azure) succeeds for the desired Git tag in order to produce images. If the tag build fails, fix it.
+- Check that the [GitHub release action](https://github.com/giantswarm/cluster-api-provider-azure/actions) for the `vX.Y.Z-gs-...` tag succeeds
+- Edit [that draft GitHub release](https://github.com/giantswarm/cluster-api-provider-azure/releases) and turn it from draft to released. This makes the release's manifest files available on the internet, as used in [cluster-api-provider-azure-app](https://github.com/giantswarm/cluster-api-provider-azure-app).
+- Test the changes in the app
 
-Are you interested in contributing to cluster-api-provider-azure? We, the
-maintainers and community, would love your suggestions, contributions, and help!
-Also, the maintainers can be contacted at any time to learn more about how to get
-involved.
+  - Replace `.tag` in [cluster-api-provider-azure-app's `values.yaml`](https://github.com/giantswarm/cluster-api-provider-azure-app/blob/master/helm/cluster-api-provider-azure/values.yaml) with the new tag `vX.Y.Z-gs-...`.
+  - Run `cd cluster-api-provider-azure-app && make generate` to update manifests
+  - Commit and push your working branch for `cluster-api-provider-azure-app` to trigger CircleCI pipeline
+  - Install and test the app thoroughly on a management cluster. Continue with the next step only once you're confident.
+- Open PR for `cluster-api-provider-azure` fork (your working branch)
 
-To set up your environment checkout the [development guide](https://capz.sigs.k8s.io/developers/development.html).
+  - If you merged an upstream release tag, we should target our `release-X.Y` branch with the PR.
+  - On the other hand, if you implemented something else which is not in upstream yet, we should target `upstream/main` so that it first lands in the upstream project, officially approved, tested and released. Afterwards, you would repeat this whole procedure and merge the release that includes your fix. For a quick in-house hotfix, you can alternatively do a quicker PR targeted against our `release-X.Y` branch.
+- Also open PR for `cluster-api-provider-azure-app` change
+- Once merged, manually bump the version in the respective collection to deploy it for one provider (e.g. [capz-app-collection](https://github.com/giantswarm/capz-app-collection/))
 
-In the interest of getting more new people involved, we tag issues with
-[`good first issue`][good_first_issue].
-These are typically issues that have smaller scope but are good ways to start
-to get acquainted with the codebase.
+### Keep fork customizations up to date
 
-We also encourage ALL active community participants to act as if they are
-maintainers, even if you don't have "official" write permissions. This is a
-community effort, we are here to serve the Kubernetes community. If you have an
-active interest and you want to get involved, you have real power! Don't assume
-that the only people who can get things done around here are the "maintainers".
+Only `README.md`, `.circleci/`, `.github/pull_request_template.md` and `.github/workflows` should differ between upstream and our fork, so the diff of everything else should be empty, or at worst, contain hotfixes that are not in upstream yet:
 
-We also would love to add more "official" maintainers, so show us what you can
-do!
+```sh
+git fetch upstream
+git diff `# the upstream tag we merged recently` vX.Y.Z..origin/release-X.Y `# our release branch` -- ':!.circleci/' '!.github/pull_request_template.md' '!.github/workflows' ':!README.md'
+```
 
-This repository uses the Kubernetes bots.  See a full list of the commands [here][prow].
+And we should also keep our `main` and `release-X.Y` branches in sync, so this diff should be empty:
 
-### Office hours
+```sh
+git diff main..release-X.Y -- .circleci/ .github/pull_request_template.md .github/workflows README.md
+```
 
-The community holds office hours every week, with sessions open to all users and
-developers.
-
-Office hours are hosted on a zoom video chat every Thursday
-at 09:00 (PT) / 12:00 (ET) [Convert to your timezone](https://www.thetimezoneconverter.com/?t=09:00&tz=PT%20%28Pacific%20Time%29)
-and are published on the [Kubernetes community meetings calendar][gcal]. Please add your questions or ideas to [the agenda][capz_agenda].
-
-### Other ways to communicate with the contributors
-
-Please check in with us in the [#cluster-api-azure][slack] channel on Slack.
-
-## Github issues
-
-### Bugs
-
-If you think you have found a bug please follow the instructions below.
-
-- Please spend a small amount of time giving due diligence to the issue tracker. Your issue might be a duplicate.
-- Get the logs from the cluster controllers. Please paste this into your issue.
-- Open a [bug report][bug_report].
-- Remember users might be searching for your issue in the future, so please give it a meaningful title to help others.
-- Feel free to reach out to the cluster-api community on [kubernetes slack][slack_info].
-
-### Tracking new features
-
-We also use the issue tracker to track features. If you have an idea for a feature, or think you can help Cluster API Provider Azure become even more awesome, then follow the steps below.
-
-- Open a [feature request][feature_request].
-- Remember users might be searching for your issue in the future, so please
-  give it a meaningful title to help others.
-- Clearly define the use case, using concrete examples. EG: I type `this` and
-  cluster-api-provider-azure does `that`.
-- Some of our larger features will require some design. If you would like to
-  include a technical design for your feature please include it in the issue.
-- After the new feature is well understood, and the design agreed upon we can
-  start coding the feature. We would love for you to code it. So please open
-  up a **WIP** *(work in progress)* pull request, and happy coding.
-
-<!-- References -->
-
-[slack]: https://kubernetes.slack.com/messages/CEX9HENG7
-[good_first_issue]: https://github.com/kubernetes-sigs/cluster-api-provider-azure/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22good+first+issue%22
-[gcal]: https://calendar.google.com/calendar/embed?src=cgnt364vd8s86hr2phapfjc6uk%40group.calendar.google.com
-[prow]: https://go.k8s.io/bot-commands
-[bug_report]: https://github.com/kubernetes-sigs/cluster-api-provider-azure/issues/new?template=bug_report.md
-[feature_request]: https://github.com/kubernetes-sigs/cluster-api-provider-azure/issues/new?template=feature_request.md
-[slack_info]: https://github.com/kubernetes/community/tree/master/communication#slack
-[cluster_api]: https://github.com/kubernetes-sigs/cluster-api
-[quickstart]: https://cluster-api.sigs.k8s.io/user/quick-start.html
-[flavors_doc]: https://github.com/kubernetes-sigs/cluster-api-provider-azure/blob/main/templates/flavors/README.md
-[capz_agenda]: https://bit.ly/k8s-capz-agenda
+If this shows any output, please align the `main` branch with the release branches.
