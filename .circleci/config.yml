@@ -1,13 +1,13 @@
 version: 2.1
 orbs:
-  go: circleci/go@1.11.0
+  go: circleci/go@3.0.3
 
 jobs:
   test:
     resource_class: large
     executor:
       name: go/default
-      tag: "1.22.3"
+      tag: "1.23.10"
     steps:
       - checkout
       - go/load-cache
@@ -21,7 +21,7 @@ jobs:
   build:
     resource_class: large
     machine:
-      image: "ubuntu-2204:2024.05.1"
+      image: "ubuntu-2404:2025.09.1"
     environment:
       ALL_ARCH: "amd64 arm64"
       REGISTRY_AZURE: gsoci.azurecr.io/giantswarm
