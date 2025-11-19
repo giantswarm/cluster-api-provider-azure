@@ -10,11 +10,12 @@ jobs:
       tag: "1.23.10"
     steps:
       - checkout
-      - go/load-cache
+      - go/load-build-cache
       - go/mod-download
       - run:
           command: make setup-envtest
-      - go/save-cache
+      - go/save-build-cache
+      - go/save-mod-cache
       - run:
           command: make test
 
