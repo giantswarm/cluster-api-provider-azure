@@ -100,7 +100,7 @@ Only `README.md`, `.circleci/`, `.github/pull_request_template.md` and `.github/
 
 ```sh
 git fetch upstream
-git diff `# the upstream tag we merged recently` vX.Y.Z..origin/release-X.Y `# our release branch` -- ':!.circleci/' '!.github/pull_request_template.md' '!.github/workflows' ':!README.md'
+git diff `# the upstream tag we merged recently` vX.Y.Z..origin/release-X.Y `# our release branch` -- ':!.circleci/' ':!.github/pull_request_template.md' ':!.github/workflows' ':!README.md'
 ```
 
 And we should also keep our `main` and `release-X.Y` branches in sync, so this diff should be empty:
