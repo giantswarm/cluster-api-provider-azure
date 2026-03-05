@@ -18,11 +18,13 @@ package privatelinks
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
-	"github.com/Azure/go-autorest/autorest"
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 	"k8s.io/utils/ptr"
@@ -113,8 +115,13 @@ var (
 
 	emptyPrivateLinkSpec = PrivateLinkSpec{}
 
-	internalError = autorest.NewErrorWithResponse("", "", &http.Response{StatusCode: http.StatusInternalServerError}, "Internal Server Error")
-	notDoneError  = azure.NewOperationNotDoneError(&infrav1.Future{})
+	internalError = &azcore.ResponseError{
+		RawResponse: &http.Response{
+			Body:       io.NopCloser(strings.NewReader("Internal Server Error")),
+			StatusCode: http.StatusInternalServerError,
+		},
+	}
+	notDoneError = azure.NewOperationNotDoneError(&infrav1.Future{})
 )
 
 func TestReconcilePrivateLink(t *testing.T) {

@@ -4150,11 +4150,7 @@ func TestPrivateLinks(t *testing.T) {
 
 			clusterScope := ClusterScope{
 				AzureClients: AzureClients{
-					EnvironmentSettings: auth.EnvironmentSettings{
-						Values: map[string]string{
-							auth.SubscriptionID: "123",
-						},
-					},
+					subscriptionID: "123",
 				},
 				Cluster:      cluster,
 				AzureCluster: &tc.azureCluster,
