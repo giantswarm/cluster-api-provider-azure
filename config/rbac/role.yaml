@@ -208,6 +208,7 @@ rules:
   - infrastructure.cluster.x-k8s.io
   resources:
   - azuremachinetemplates
+  - azuremachinetemplates/finalizers
   verbs:
   - get
   - list
@@ -215,7 +216,6 @@ rules:
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
-  - azuremachinetemplates/finalizers
   - azuremachinetemplates/status
   verbs:
   - get
