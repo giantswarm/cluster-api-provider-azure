@@ -23,6 +23,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
 	"github.com/pkg/errors"
 	"k8s.io/utils/ptr"
+
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/converters"
@@ -74,7 +75,7 @@ func (s *PrivateLinkSpec) OwnerResourceName() string {
 }
 
 // Parameters returns the parameters for the private link.
-func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) (params interface{}, err error) {
+func (s *PrivateLinkSpec) Parameters(_ context.Context, existing any) (params any, err error) {
 	if existing != nil {
 		// Private link already exist, so we have to check if it should be updated.
 		existingPrivateLink, ok := existing.(armnetwork.PrivateLinkService)
@@ -90,10 +91,11 @@ func (s *PrivateLinkSpec) Parameters(ctx context.Context, existing interface{}) 
 		if isExistingUpToDate(existingPrivateLink, privateLinkToCreate) {
 			// Existing private link is up-to-date.
 			return nil, nil
-		} else {
-			// Existing private link is outdated, we return new updated parameters.
-			return privateLinkToCreate, nil
 		}
+
+		// Existing private link is outdated, we return new updated parameters.
+		return privateLinkToCreate, nil
+
 	}
 
 	// Private link does not exist, so we create it here.

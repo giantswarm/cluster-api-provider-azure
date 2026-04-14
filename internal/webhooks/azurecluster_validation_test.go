@@ -2040,7 +2040,6 @@ func TestValidatePrivateLinks(t *testing.T) {
 	}
 
 	for _, test := range testcases {
-		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			err := validateLBPrivateLinks(&test.lb, &test.old, test.subnets, field.NewPath("apiServerLB"))

@@ -217,7 +217,7 @@ var (
 		Location: ptr.To(fakeRegion),
 		Properties: &armnetwork.PrivateLinkServiceProperties{
 			IPConfigurations: []*armnetwork.PrivateLinkServiceIPConfiguration{
-				&armnetwork.PrivateLinkServiceIPConfiguration{
+				{
 					Name: ptr.To(fmt.Sprintf("%s-natipconfig-1", fakeSubnetName)),
 					Properties: &armnetwork.PrivateLinkServiceIPConfigurationProperties{
 						Subnet: &armnetwork.Subnet{
@@ -543,7 +543,6 @@ func TestEqualStringSlicesPtrIgnoreOrder(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
 			t.Parallel()
@@ -558,15 +557,15 @@ func TestParameters(t *testing.T) {
 	testcases := []struct {
 		name          string
 		spec          PrivateLinkSpec
-		existing      interface{}
-		expect        func(g *WithT, result interface{})
+		existing      any
+		expect        func(g *WithT, result any)
 		expectedError string
 	}{
 		{
 			name:     "PrivateLink does not exist",
 			spec:     fakePrivateLinkSpec1,
 			existing: nil,
-			expect: func(g *WithT, result interface{}) {
+			expect: func(g *WithT, result any) {
 				g.Expect(result).To(BeAssignableToTypeOf(armnetwork.PrivateLinkService{}))
 				g.Expect(result).To(Equal(fakePrivateLink1))
 			},
@@ -575,7 +574,7 @@ func TestParameters(t *testing.T) {
 			name:     "PrivateLink already exists with the same config",
 			spec:     fakePrivateLinkSpec1,
 			existing: fakePrivateLink1,
-			expect: func(g *WithT, result interface{}) {
+			expect: func(g *WithT, result any) {
 				g.Expect(result).To(BeNil())
 			},
 		},
@@ -583,7 +582,7 @@ func TestParameters(t *testing.T) {
 			name:     "PrivateLink changed and added one new allowed subscription",
 			spec:     fakePrivateLinkSpec2, // spec with 2 allowed subscriptions
 			existing: fakePrivateLink1,     // existing private link with 1 allowed subscription
-			expect: func(g *WithT, result interface{}) {
+			expect: func(g *WithT, result any) {
 				g.Expect(result).To(BeAssignableToTypeOf(armnetwork.PrivateLinkService{}))
 				g.Expect(result).To(Equal(fakePrivateLink2)) // expects (updated) private link with 2 allowed subscriptions
 			},
@@ -592,7 +591,7 @@ func TestParameters(t *testing.T) {
 			name:     "PrivateLink changed and added one new auto-approved subscription",
 			spec:     fakePrivateLinkSpec3, // spec with 2 auto-approved subscriptions
 			existing: fakePrivateLink2,     // existing private link with 1 auto-approved subscription
-			expect: func(g *WithT, result interface{}) {
+			expect: func(g *WithT, result any) {
 				g.Expect(result).To(BeAssignableToTypeOf(armnetwork.PrivateLinkService{}))
 				g.Expect(result).To(Equal(fakePrivateLink3)) // expects (updated) private link with 2 auto-approved subscriptions
 			},
@@ -601,7 +600,7 @@ func TestParameters(t *testing.T) {
 			name:     "PrivateLink changed and enabled proxy protocol",
 			spec:     fakePrivateLinkSpec4, // spec with enabled proxy protocol
 			existing: fakePrivateLink3,     // existing private link with disabled proxy protocol
-			expect: func(g *WithT, result interface{}) {
+			expect: func(g *WithT, result any) {
 				g.Expect(result).To(BeAssignableToTypeOf(armnetwork.PrivateLinkService{}))
 				g.Expect(result).To(Equal(fakePrivateLink4)) // expects (updated) private link with enabled proxy protocol
 			},
@@ -610,7 +609,7 @@ func TestParameters(t *testing.T) {
 			name:     "PrivateLink changed LB frontend config name",
 			spec:     fakePrivateLinkSpec5, // spec with changed LB frontend config name
 			existing: fakePrivateLink4,     // existing private link with old LB frontend config name
-			expect: func(g *WithT, result interface{}) {
+			expect: func(g *WithT, result any) {
 				g.Expect(result).To(BeAssignableToTypeOf(armnetwork.PrivateLinkService{}))
 				g.Expect(result).To(Equal(fakePrivateLink5)) // expects (updated) private link with changed LB frontend config name
 			},
@@ -618,7 +617,6 @@ func TestParameters(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
 			t.Parallel()
