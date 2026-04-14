@@ -19,8 +19,6 @@ package privatelinks
 import (
 	"context"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4"
-
 	infrav1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/cluster-api-provider-azure/azure"
 	"sigs.k8s.io/cluster-api-provider-azure/azure/services/async"
@@ -52,7 +50,7 @@ func New(scope PrivateLinkScope) (*Service, error) {
 	}
 	return &Service{
 		Scope:      scope,
-		Reconciler: async.New[armnetwork.PrivateLinkServicesClientCreateOrUpdateResponse, armnetwork.PrivateLinkServicesClientDeleteResponse](scope, client, client),
+		Reconciler: async.New(scope, client, client),
 	}, nil
 }
 

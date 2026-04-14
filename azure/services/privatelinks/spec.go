@@ -95,7 +95,6 @@ func (s *PrivateLinkSpec) Parameters(_ context.Context, existing any) (params an
 
 		// Existing private link is outdated, we return new updated parameters.
 		return privateLinkToCreate, nil
-
 	}
 
 	// Private link does not exist, so we create it here.
