@@ -37,7 +37,7 @@ type Getter interface {
 
 // Lister is an interface that can list resources.
 type Lister interface {
-	List(ctx context.Context, ownerResourceName string) (result []interface{}, err error)
+	List(ctx context.Context, ownerResourceName string) (result []any, err error)
 }
 
 // TagsGetter is an interface that can get a tags resource.
