@@ -102,6 +102,7 @@ rules:
 - apiGroups:
   - cluster.x-k8s.io
   resources:
+  - machinepools/finalizers
   - machinepools/status
   verbs:
   - get
@@ -152,6 +153,7 @@ rules:
   - azureasomanagedcontrolplanes
   - azureasomanagedmachinepools
   - azureclusteridentities
+  - azureclusteridentities/finalizers
   - azureclusteridentities/status
   - azureclusters
   - azuremachinepoolmachines
@@ -182,12 +184,17 @@ rules:
   - azureasomanagedclusters/status
   - azureasomanagedcontrolplanes/status
   - azureasomanagedmachinepools/status
+  - azureclusters/finalizers
   - azureclusters/status
   - azuremachinepoolmachines/status
+  - azuremachinepools/finalizers
   - azuremachinepools/status
+  - azuremachines/finalizers
   - azuremachines/status
   - azuremanagedclusters/status
+  - azuremanagedcontrolplanes/finalizers
   - azuremanagedcontrolplanes/status
+  - azuremanagedmachinepools/finalizers
   - azuremanagedmachinepools/status
   verbs:
   - get
@@ -196,7 +203,14 @@ rules:
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
+  - azuremachinepoolmachines/finalizers
+  verbs:
+  - get
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
   - azuremachinetemplates
+  - azuremachinetemplates/finalizers
   verbs:
   - get
   - list
@@ -250,10 +264,15 @@ rules:
 - apiGroups:
   - network.azure.com
   resources:
+  - bastionhosts/finalizers
   - bastionhosts/status
+  - natgateways/finalizers
   - natgateways/status
+  - privateendpoints/finalizers
   - privateendpoints/status
+  - virtualnetworks/finalizers
   - virtualnetworks/status
+  - virtualnetworkssubnets/finalizers
   - virtualnetworkssubnets/status
   verbs:
   - get
@@ -274,6 +293,7 @@ rules:
 - apiGroups:
   - resources.azure.com
   resources:
+  - resourcegroups/finalizers
   - resourcegroups/status
   verbs:
   - get
