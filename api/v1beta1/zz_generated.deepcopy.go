@@ -4018,6 +4018,11 @@ func (in *PrivateLink) DeepCopyInto(out *PrivateLink) {
 		*out = make([]PrivateLinkNATIPConfiguration, len(*in))
 		copy(*out, *in)
 	}
+	if in.NATIpConfigurations != nil {
+		in, out := &in.NATIpConfigurations, &out.NATIpConfigurations
+		*out = make([]PrivateLinkNATIPConfiguration, len(*in))
+		copy(*out, *in)
+	}
 	if in.LBFrontendIPConfigNames != nil {
 		in, out := &in.LBFrontendIPConfigNames, &out.LBFrontendIPConfigNames
 		*out = make([]string, len(*in))
