@@ -958,14 +958,18 @@ func validateLBPrivateLinks(lb *infrav1.LoadBalancerSpec, oldLb *infrav1.LoadBal
 				}
 			}
 
-			// validate that NAT IP configurations have not changed
-			if oldPrivateLink, ok := oldPrivateLinksMap[pl.Name]; ok && !reflect.DeepEqual(pl.NATIPConfigurations, oldPrivateLink.NATIPConfigurations) {
-				allErrs = append(
-					allErrs,
-					field.Invalid(
-						fldPath.Child("privateLinks").Index(i).Child("natIPConfigurations"),
-						pl.NATIPConfigurations,
-						"NATIPConfigurations cannot be modified"))
+			// Compatibility fix; to be removed. The defaulting webhook fills this field with the value
+			// from pl.NATIpConfigurations if it is empty, and thus changes it.
+			if pl.NATIPConfigurations != nil {
+				// validate that NAT IP configurations have not changed
+				if oldPrivateLink, ok := oldPrivateLinksMap[pl.Name]; ok && !reflect.DeepEqual(pl.NATIPConfigurations, oldPrivateLink.NATIPConfigurations) {
+					allErrs = append(
+						allErrs,
+						field.Invalid(
+							fldPath.Child("privateLinks").Index(i).Child("natIPConfigurations"),
+							pl.NATIPConfigurations,
+							"NATIPConfigurations cannot be modified"))
+				}
 			}
 		}
 
