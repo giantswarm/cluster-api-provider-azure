@@ -829,6 +829,30 @@ spec:
                                 - subnet
                                 type: object
                               type: array
+                            natIpConfigurations:
+                              description: Compatibility fix; to be removed.
+                              items:
+                                description: PrivateLinkNATIPConfiguration specifies
+                                  NAT IP configuration for the private link.
+                                properties:
+                                  allocationMethod:
+                                    description: 'AllocationMethod specifies how the
+                                      private link NAT IPs are allocated: "Static"
+                                      or "Dynamic".'
+                                    enum:
+                                    - Static
+                                    - Dynamic
+                                    type: string
+                                  privateIPAddress:
+                                    type: string
+                                  subnet:
+                                    description: Subnet from which the IP is allocated.
+                                    type: string
+                                required:
+                                - allocationMethod
+                                - subnet
+                                type: object
+                              type: array
                           required:
                           - lbFrontendIPConfigNames
                           - natIPConfigurations
@@ -989,6 +1013,30 @@ spec:
                                 - subnet
                                 type: object
                               type: array
+                            natIpConfigurations:
+                              description: Compatibility fix; to be removed.
+                              items:
+                                description: PrivateLinkNATIPConfiguration specifies
+                                  NAT IP configuration for the private link.
+                                properties:
+                                  allocationMethod:
+                                    description: 'AllocationMethod specifies how the
+                                      private link NAT IPs are allocated: "Static"
+                                      or "Dynamic".'
+                                    enum:
+                                    - Static
+                                    - Dynamic
+                                    type: string
+                                  privateIPAddress:
+                                    type: string
+                                  subnet:
+                                    description: Subnet from which the IP is allocated.
+                                    type: string
+                                required:
+                                - allocationMethod
+                                - subnet
+                                type: object
+                              type: array
                           required:
                           - lbFrontendIPConfigNames
                           - natIPConfigurations
@@ -1126,6 +1174,30 @@ spec:
                             natIPConfigurations:
                               description: NATIPConfigurations specify up to 8 NAT
                                 IP configurations for the private link.
+                              items:
+                                description: PrivateLinkNATIPConfiguration specifies
+                                  NAT IP configuration for the private link.
+                                properties:
+                                  allocationMethod:
+                                    description: 'AllocationMethod specifies how the
+                                      private link NAT IPs are allocated: "Static"
+                                      or "Dynamic".'
+                                    enum:
+                                    - Static
+                                    - Dynamic
+                                    type: string
+                                  privateIPAddress:
+                                    type: string
+                                  subnet:
+                                    description: Subnet from which the IP is allocated.
+                                    type: string
+                                required:
+                                - allocationMethod
+                                - subnet
+                                type: object
+                              type: array
+                            natIpConfigurations:
+                              description: Compatibility fix; to be removed.
                               items:
                                 description: PrivateLinkNATIPConfiguration specifies
                                   NAT IP configuration for the private link.

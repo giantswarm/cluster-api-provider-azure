@@ -73,6 +73,15 @@ func setDefaultAzureClusterNetworkSpec(c *infrav1.AzureCluster) {
 	if !c.Spec.ControlPlaneEnabled {
 		c.Spec.NetworkSpec.APIServerLB = nil
 	}
+
+	// Compatibility fix; to be removed.
+	if c.Spec.NetworkSpec.APIServerLB != nil {
+		for i := range c.Spec.NetworkSpec.APIServerLB.PrivateLinks {
+			if c.Spec.NetworkSpec.APIServerLB.PrivateLinks[i].NATIPConfigurations == nil {
+				c.Spec.NetworkSpec.APIServerLB.PrivateLinks[i].NATIPConfigurations = c.Spec.NetworkSpec.APIServerLB.PrivateLinks[i].NATIpConfigurations
+			}
+		}
+	}
 }
 
 // setDefaultAzureClusterResourceGroup sets the default resource group for an AzureCluster.
