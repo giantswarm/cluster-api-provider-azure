@@ -852,6 +852,7 @@ spec:
                                 - allocationMethod
                                 - subnet
                                 type: object
+                              nullable: true
                               type: array
                           required:
                           - lbFrontendIPConfigNames
@@ -1036,6 +1037,7 @@ spec:
                                 - allocationMethod
                                 - subnet
                                 type: object
+                              nullable: true
                               type: array
                           required:
                           - lbFrontendIPConfigNames
@@ -1219,6 +1221,7 @@ spec:
                                 - allocationMethod
                                 - subnet
                                 type: object
+                              nullable: true
                               type: array
                           required:
                           - lbFrontendIPConfigNames

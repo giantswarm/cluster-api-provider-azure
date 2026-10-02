@@ -438,8 +438,9 @@ type PrivateLink struct {
 	// NATIPConfigurations specify up to 8 NAT IP configurations for the private link.
 	NATIPConfigurations []PrivateLinkNATIPConfiguration `json:"natIPConfigurations"`
 	// Compatibility fix; to be removed.
+	// +nullable
 	// +optional
-	NATIpConfigurations []PrivateLinkNATIPConfiguration `json:"natIpConfigurations"`
+	NATIpConfigurations []PrivateLinkNATIPConfiguration `json:"natIpConfigurations,omitempty"`
 
 	// LBFrontendIPConfigNames are the names of the load balancer FrontendIP to which the private link will forward
 	// requests. The specified frontend IP configs must have the private IP set.
